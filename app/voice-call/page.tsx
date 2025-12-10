@@ -445,7 +445,7 @@ export default function VoiceCallPage() {
                       En cas de danger immédiat, appelez directement le <span className="font-bold text-red-600">190 (SAMU)</span>
                     </p>
                   </div>
-                  <Link href="tel:190">
+                  <a href="tel:190">
                     <motion.button
                       className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-semibold text-sm shadow-lg shadow-red-500/30"
                       whileHover={{ scale: 1.05 }}
@@ -453,7 +453,7 @@ export default function VoiceCallPage() {
                     >
                       190
                     </motion.button>
-                  </Link>
+                  </a>
                 </div>
               </motion.div>
             </motion.div>

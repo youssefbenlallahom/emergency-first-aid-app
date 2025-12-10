@@ -478,7 +478,7 @@ export default function CPRCameraPage() {
               transition={{ delay: 0.5 }}
               className="mt-8 relative z-10"
             >
-              <Link href="tel:190">
+              <a href="tel:190">
                 <motion.button
                   className="flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 text-sm font-medium"
                   whileHover={{ scale: 1.05 }}
@@ -487,7 +487,7 @@ export default function CPRCameraPage() {
                   <Phone className="w-4 h-4" />
                   Urgence ? Appelez le 190
                 </motion.button>
-              </Link>
+              </a>
             </motion.div>
           </motion.div>
         ) : (

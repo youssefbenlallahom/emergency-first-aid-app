@@ -310,7 +310,7 @@ export default function HomePage() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
         >
-          <Link href="tel:190">
+          <a href="tel:190" className="block">
             <motion.div
               className="relative flex flex-col items-center justify-center p-8 sm:p-10 rounded-3xl bg-gradient-to-br from-red-500 via-rose-500 to-red-600 text-white shadow-2xl shadow-red-500/40 overflow-hidden cursor-pointer"
               whileHover={{ scale: 1.02, boxShadow: "0 25px 50px -12px rgba(239, 68, 68, 0.5)" }}
@@ -357,7 +357,7 @@ export default function HomePage() {
                 Appuyez pour appeler immédiatement
               </motion.div>
             </motion.div>
-          </Link>
+          </a>
         </motion.section>
 
         {/* Stats Section */}

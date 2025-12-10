@@ -173,6 +173,27 @@
   }
 }
 
+/* Very small phones (iPhone SE, etc.) */
+@media (max-width: 375px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Small phones */
+@media (min-width: 376px) and (max-width: 480px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+/* Large phones and tablets */
+@media (min-width: 481px) {
+  html {
+    font-size: 16px;
+  }
+}
+
 /* Improve touch targets on mobile */
 @media (hover: none) and (pointer: coarse) {
   button, a {
@@ -181,10 +202,30 @@
   }
 }
 
+/* Landscape mode adjustments */
+@media (orientation: landscape) and (max-height: 500px) {
+  .landscape-compact {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+
 /* Prevent text selection on buttons for better UX */
 button {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+}
+
+/* Smooth scrolling on iOS */
+.smooth-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fix for iOS input zoom */
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
 }
 
 /* Remove black background from animated GIFs */
