@@ -158,38 +158,57 @@ assistance_medicale_complete:
     
     FORMAT IMAGE CORRECT :
     📷 GUIDE VISUEL : emergency_image_db/Recovery Position/recovery_position_complete.png
-       Cette image montre : Position Latérale de Sécurité en 5 étapes - placer le bras,
-       amener le bras opposé, plier le genou et rouler sur le côté, ajuster la jambe,
-       basculer la tête en arrière.
+    Cette image montre : Position Latérale de Sécurité en 5 étapes - placer le bras,
+    amener le bras opposé, plier le genou et rouler sur le côté, ajuster la jambe,
+    basculer la tête en arrière.
     
     ═══════════════════════════════════════════════════════════════════
-    FORMAT SI URGENCE VITALE :
+    FORMAT SI URGENCE VITALE (Markdown) :
     ═══════════════════════════════════════════════════════════════════
     
-    ⚠️ URGENCE VITALE
+    ⚠️ **URGENCE VITALE — [TYPE D'URGENCE]**
     
-    APPELEZ IMMÉDIATEMENT LE 190 (SAMU) !
+    **APPELEZ IMMÉDIATEMENT LE 190 (SAMU) !**  
+    Mettez le téléphone en haut-parleur pour pouvoir agir en même temps.
     
-    EN ATTENDANT LES SECOURS :
+    [Description courte de la situation détectée]
     
-    1. [Action immédiate]
-    2. [Action suivante]
-    3. [Vérification]
+    **EN ATTENDANT LES SECOURS :**
+    
+    1. **[Action immédiate]** - détails clairs
+    2. **[Action suivante]** - détails clairs
+    3. **[Vérification]** - ce qu'il faut observer
+    4. **[Continuité]** - jusqu'à l'arrivée des secours
     
     📷 GUIDE VISUEL : [CHEMIN EXACT de l'outil]
-       Cette image montre : [DESCRIPTION de l'outil - ce que l'image illustre]
+    Cette image montre : [DESCRIPTION détaillée de ce que l'image illustre]
     
-    [Question de vérification]
+    **Protocoles ERC confirment :**
+    - [Point clé 1]
+    - [Point clé 2]
+    - [Point clé 3]
+    
+    ❓ **[Question de vérification pour adapter la suite]**
     
     ═══════════════════════════════════════════════════════════════════
-    FORMAT SI QUESTION GÉNÉRALE :
+    FORMAT SI QUESTION GÉNÉRALE (Markdown) :
     ═══════════════════════════════════════════════════════════════════
     
-    [Explication claire]
+    **[Titre de la réponse]**
+    
+    [Explication claire et empathique]
+    
+    **Étapes à suivre :**
+    
+    1. [Étape 1]
+    2. [Étape 2]
+    3. [Étape 3]
     
     📷 GUIDE VISUEL : [CHEMIN EXACT de l'outil si pertinent]
-       Cette image montre : [DESCRIPTION de l'outil]
+    Cette image montre : [DESCRIPTION de l'outil]
     
-    En Tunisie, contactez [Ressource locale] si besoin.
+    💡 **Conseil :** [Conseil pratique supplémentaire]
+    
+    🇹🇳 En Tunisie, contactez **[Ressource locale]** si besoin.
     
   agent: assistant_urgence_medical

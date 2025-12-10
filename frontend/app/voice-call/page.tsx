@@ -1,10 +1,11 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, ArrowLeft, Heart, Sparkles, Shield, MessageCircle, Zap, Activity } from "lucide-react"
+import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, ArrowLeft, Heart, Sparkles, Shield, MessageCircle, Zap, Activity, WifiOff, Send } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { VoiceConnection, VoiceServerMessage, isApiAvailable } from "@/lib/api"
 
 type CallState = "idle" | "connecting" | "listening" | "speaking" | "ended"
 
@@ -195,24 +196,216 @@ export default function VoiceCallPage() {
   const [callState, setCallState] = useState<CallState>("idle")
   const [isMuted, setIsMuted] = useState(false)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
+  const [isApiConnected, setIsApiConnected] = useState(true)
+  const [transcript, setTranscript] = useState("")
+  const [response, setResponse] = useState("")
+  const [isListening, setIsListening] = useState(false)
+  const [textInput, setTextInput] = useState("")
+  
+  // Refs for WebSocket and Speech Recognition
+  const voiceConnectionRef = useRef<VoiceConnection | null>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const synthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
-  const startCall = useCallback(() => {
-    setCallState("connecting")
-    setTimeout(() => {
-      setCallState("listening")
-      setTimeout(() => {
-        setCallState("speaking")
-        setTimeout(() => {
-          setCallState("listening")
-        }, 4000)
-      }, 3000)
-    }, 2000)
+  // Check API availability on mount
+  useEffect(() => {
+    const checkApi = async () => {
+      const available = await isApiAvailable()
+      setIsApiConnected(available)
+    }
+    checkApi()
+    const interval = setInterval(checkApi, 30000)
+    return () => clearInterval(interval)
   }, [])
 
+  // Initialize Speech Recognition
+  const initSpeechRecognition = useCallback(() => {
+    if (typeof window === 'undefined') return null
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      console.warn('Speech Recognition not supported')
+      return null
+    }
+    
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'fr-FR'
+    
+    recognition.onresult = (event) => {
+      let finalTranscript = ''
+      let interimTranscript = ''
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript
+        } else {
+          interimTranscript += transcript
+        }
+      }
+      
+      setTranscript(interimTranscript || finalTranscript)
+      
+      // Send final transcript to WebSocket
+      if (finalTranscript && voiceConnectionRef.current?.isConnected()) {
+        voiceConnectionRef.current.sendText(finalTranscript)
+        setTranscript('')
+        setCallState('speaking') // AI is processing/responding
+      }
+    }
+    
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error)
+      if (event.error !== 'aborted') {
+        setIsListening(false)
+      }
+    }
+    
+    recognition.onend = () => {
+      // Restart recognition if still in listening mode
+      if (callState === 'listening' && !isMuted && recognitionRef.current) {
+        try {
+          recognitionRef.current.start()
+        } catch (e) {
+          console.log('Recognition restart prevented:', e)
+        }
+      }
+    }
+    
+    return recognition
+  }, [callState, isMuted])
+
+  // Handle WebSocket messages
+  const handleVoiceMessage = useCallback((message: VoiceServerMessage) => {
+    switch (message.type) {
+      case 'status':
+        if (message.state === 'connected') {
+          setCallState('listening')
+        } else if (message.state === 'processing') {
+          setCallState('speaking')
+        } else if (message.state === 'listening') {
+          setCallState('listening')
+        } else if (message.state === 'ended') {
+          setCallState('ended')
+        }
+        break
+      case 'response':
+        if (message.text) {
+          setResponse(message.text)
+          // Use Text-to-Speech for the response
+          if (isSpeakerOn && 'speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(message.text)
+            utterance.lang = 'fr-FR'
+            utterance.rate = 1.0
+            utterance.pitch = 1.0
+            utterance.onend = () => {
+              setCallState('listening')
+            }
+            synthRef.current = utterance
+            speechSynthesis.speak(utterance)
+          } else {
+            // If TTS is off, go back to listening after a delay
+            setTimeout(() => setCallState('listening'), 2000)
+          }
+        }
+        break
+      case 'transcript':
+        if (message.text) {
+          setTranscript(message.text)
+        }
+        break
+      case 'error':
+        console.error('Voice error:', message.message)
+        break
+    }
+  }, [isSpeakerOn])
+
+  const startCall = useCallback(async () => {
+    setCallState("connecting")
+    setResponse("")
+    setTranscript("")
+    
+    try {
+      // Connect to WebSocket
+      const connection = new VoiceConnection()
+      voiceConnectionRef.current = connection
+      
+      await connection.connect(handleVoiceMessage)
+      
+      // Initialize and start speech recognition
+      const recognition = initSpeechRecognition()
+      if (recognition) {
+        recognitionRef.current = recognition
+        recognition.start()
+        setIsListening(true)
+      }
+      
+      setCallState("listening")
+    } catch (error) {
+      console.error('Failed to start call:', error)
+      setCallState("idle")
+      setIsApiConnected(false)
+    }
+  }, [handleVoiceMessage, initSpeechRecognition])
+
   const endCall = useCallback(() => {
+    // Stop speech recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setIsListening(false)
+    
+    // Stop any ongoing speech synthesis
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel()
+    }
+    
+    // Disconnect WebSocket
+    if (voiceConnectionRef.current) {
+      voiceConnectionRef.current.endSession()
+      voiceConnectionRef.current.disconnect()
+      voiceConnectionRef.current = null
+    }
+    
     setCallState("ended")
     setTimeout(() => setCallState("idle"), 2000)
   }, [])
+
+  // Handle mute toggle
+  useEffect(() => {
+    if (recognitionRef.current) {
+      if (isMuted) {
+        recognitionRef.current.stop()
+        setIsListening(false)
+      } else if (callState === 'listening') {
+        try {
+          recognitionRef.current.start()
+          setIsListening(true)
+        } catch (e) {
+          console.log('Already started:', e)
+        }
+      }
+    }
+  }, [isMuted, callState])
+
+  // Handle speaker toggle
+  useEffect(() => {
+    if (!isSpeakerOn && 'speechSynthesis' in window) {
+      speechSynthesis.cancel()
+    }
+  }, [isSpeakerOn])
+
+  // Send text message manually
+  const sendTextMessage = useCallback(() => {
+    if (textInput.trim() && voiceConnectionRef.current?.isConnected()) {
+      voiceConnectionRef.current.sendText(textInput.trim())
+      setTextInput('')
+      setCallState('speaking')
+    }
+  }, [textInput])
 
   const getStatusText = () => {
     switch (callState) {
@@ -307,6 +500,21 @@ export default function VoiceCallPage() {
           {/* Idle State - Enhanced */}
           {callState === "idle" && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-8">
+              {/* API Connection Warning */}
+              {!isApiConnected && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl"
+                >
+                  <WifiOff className="w-5 h-5 text-amber-500" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-800">Mode hors ligne</p>
+                    <p className="text-xs text-amber-600">L'assistant vocal n'est pas disponible actuellement</p>
+                  </div>
+                </motion.div>
+              )}
+              
               {/* Hero Card */}
               <motion.div 
                 className="bg-white rounded-3xl p-5 sm:p-7 shadow-xl shadow-slate-200/50 border border-slate-100"
@@ -356,9 +564,14 @@ export default function VoiceCallPage() {
               <div className="flex flex-col items-center gap-5 sm:gap-7 py-4">
                 <motion.button
                   onClick={startCall}
-                  className="relative w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-gradient-to-br from-[#22C55E] via-emerald-500 to-green-600 text-white shadow-2xl shadow-emerald-500/50 active:scale-95"
-                  whileHover={{ scale: 1.08 }}
-                  whileTap={{ scale: 0.95 }}
+                  disabled={!isApiConnected}
+                  className={`relative w-32 h-32 sm:w-40 sm:h-40 rounded-full text-white shadow-2xl active:scale-95 ${
+                    isApiConnected 
+                      ? "bg-gradient-to-br from-[#22C55E] via-emerald-500 to-green-600 shadow-emerald-500/50" 
+                      : "bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600 shadow-slate-500/50 cursor-not-allowed"
+                  }`}
+                  whileHover={isApiConnected ? { scale: 1.08 } : {}}
+                  whileTap={isApiConnected ? { scale: 0.95 } : {}}
                 >
                   {/* Pulse rings */}
                   {[1, 2, 3].map((ring) => (
@@ -529,6 +742,26 @@ export default function VoiceCallPage() {
                 <p className="text-sm sm:text-base text-white/60 max-w-xs mx-auto">
                   {getStatusSubtext()}
                 </p>
+                {/* Show transcript while listening */}
+                {transcript && callState === 'listening' && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-3 text-cyan-300 italic text-sm"
+                  >
+                    "{transcript}"
+                  </motion.p>
+                )}
+                {/* Show AI response */}
+                {response && callState === 'speaking' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 max-h-32 overflow-y-auto bg-white/10 rounded-xl p-3 text-left"
+                  >
+                    <p className="text-emerald-300 text-sm leading-relaxed">{response}</p>
+                  </motion.div>
+                )}
               </motion.div>
 
               <motion.div 
@@ -597,6 +830,34 @@ export default function VoiceCallPage() {
               >
                 Parlez clairement et décrivez les symptômes observés
               </motion.p>
+
+              {/* Text input fallback */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="w-full max-w-md px-4"
+              >
+                <div className="flex items-center gap-2 bg-white/10 rounded-xl p-2 border border-white/20">
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendTextMessage()}
+                    placeholder="Ou tapez votre message ici..."
+                    className="flex-1 bg-transparent text-white placeholder-white/40 text-sm px-3 py-2 focus:outline-none"
+                  />
+                  <motion.button
+                    onClick={sendTextMessage}
+                    disabled={!textInput.trim()}
+                    className="p-2 rounded-lg bg-cyan-500/30 text-cyan-300 hover:bg-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Send className="w-4 h-4" />
+                  </motion.button>
+                </div>
+              </motion.div>
             </motion.div>
           )}
 

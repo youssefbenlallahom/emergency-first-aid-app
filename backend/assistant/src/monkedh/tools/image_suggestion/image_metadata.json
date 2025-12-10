@@ -20,9 +20,9 @@
       "filename": "emergency_image_db/CPR – Adult casualty/adult_cpr_chest_compressions.png",
       "category": "RCP",
       "subcategory": "Adulte",
-      "caption": "Comment faire un massage cardiaque sur un adulte - positionnement des mains au centre de la poitrine, bras tendus, 30 compressions",
-      "caption_en": "How to do CPR on adult - chest compressions hand positioning on center of chest, arms straight, compress 30 times",
-      "keywords": ["adulte", "rcp", "massage cardiaque", "compressions thoraciques", "arrêt cardiaque", "réanimation", "urgence", "adult", "cpr", "chest compressions", "cardiac arrest", "resuscitation"]
+      "caption": "Comment faire un massage cardiaque sur un adulte - positionnement des mains au centre de la poitrine, bras tendus, 30 compressions. NOTE: Pour femme enceinte en arrêt cardiaque, utiliser la même technique mais incliner légèrement la victime sur le côté gauche si possible",
+      "caption_en": "How to do CPR on adult - chest compressions hand positioning on center of chest, arms straight, compress 30 times. NOTE: For pregnant woman in cardiac arrest, use same technique but tilt victim slightly to left side if possible",
+      "keywords": ["adulte", "rcp", "massage cardiaque", "compressions thoraciques", "arrêt cardiaque", "réanimation", "urgence", "enceinte", "grossesse", "femme enceinte arrêt cardiaque", "adult", "cpr", "chest compressions", "cardiac arrest", "resuscitation", "pregnant", "pregnancy", "pregnant woman cardiac arrest"]
     },
     {
       "filename": "emergency_image_db/CPR – Adult casualty/adult_cpr_rescue_breathing.png",

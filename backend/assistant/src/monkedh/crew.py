@@ -4,6 +4,7 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai_tools import SerperDevTool, ScrapeWebsiteTool
 from typing import List
 import os
+from pathlib import Path
 from crewai import LLM
 from .tools.redis_storage import RedisStorage
 from crewai.memory.short_term.short_term_memory import ShortTermMemory
@@ -13,7 +14,10 @@ from monkedh.tools.rag.config import QDRANT_URL, QDRANT_API_KEY
 from .tools.image_suggestion import search_emergency_image
 
 
-dotenv.load_dotenv()
+# Load .env from the assistant directory (where pyproject.toml is)
+# crew.py -> monkedh -> src -> assistant (3 parents)
+env_path = Path(__file__).parent.parent.parent / ".env"
+dotenv.load_dotenv(env_path)
 
 # Disable SSL warnings for TokenFactory
 import urllib3
@@ -86,9 +90,10 @@ class Monkedh():
                 self.webscraper_tool,    # Scraping de pages
             ],
             llm=llm,
-            max_iter=3,
-            cache=False,  # Désactivé pour forcer l'appel des outils
+            max_iter=5,              # Increased to allow retry on tool failures
+            cache=False,             # Désactivé pour forcer l'appel des outils
             verbose=True,
+            max_retry_limit=3,       # Allow retries on errors
         )
 
     # ============================================
@@ -98,10 +103,11 @@ class Monkedh():
     def assistance_medicale_complete(self) -> Task:
         """
         Tâche unique qui combine détection, guidage et notification.
+        Output en Markdown pour un affichage plus lisible.
         """
         return Task(
             config=self.tasks_config['assistance_medicale_complete'],
-            output_file='protocols_urgences.json'
+            output_file='protocols_urgences.md'
         )
 
     @crew

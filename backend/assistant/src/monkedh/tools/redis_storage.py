@@ -318,6 +318,53 @@ class RedisMemory:
             print(f"❌ Error clearing conversation history: {e}")
             return False
 
+    def clear_session_memory(self, channel_id: str) -> bool:
+        """
+        Clear all memory associated with a session (short-term memory).
+        This includes conversation pairs and generic memory items.
+        Should be called at the start of each new session.
+        
+        Args:
+            channel_id: The session/channel ID to clear
+            
+        Returns:
+            bool: Success status
+        """
+        if not self.redis_client:
+            print("⚠️ Redis not available, skipping session memory clear")
+            return False
+        
+        try:
+            # Keys to clear for a complete session reset
+            keys_to_clear = [
+                self._get_conversation_key(channel_id),  # conversation:{channel_id}
+                f"conversation_pairs:{channel_id}",       # conversation_pairs:{channel_id}
+            ]
+            
+            # Also clear any CrewAI memory keys that might exist
+            # Pattern: medical_crew:{channel_id}:short_term or similar
+            pattern_keys = self.redis_client.keys(f"*:{channel_id}:*")
+            keys_to_clear.extend(pattern_keys)
+            
+            # Additional pattern for namespace-based keys
+            namespace_keys = self.redis_client.keys(f"medical_crew:*{channel_id}*")
+            keys_to_clear.extend(namespace_keys)
+            
+            # Remove duplicates
+            keys_to_clear = list(set(keys_to_clear))
+            
+            deleted_count = 0
+            for key in keys_to_clear:
+                if key and self.redis_client.exists(key):
+                    self.redis_client.delete(key)
+                    deleted_count += 1
+            
+            print(f"🗑️ Session memory cleared for {channel_id} ({deleted_count} keys deleted)")
+            return True
+        except Exception as e:
+            print(f"❌ Error clearing session memory: {e}")
+            return False
+
     def get_memory_stats(self) -> Dict:
         """Get memory usage statistics"""
         if not self.redis_client:
@@ -460,6 +507,11 @@ def store_conversation_pair(channel_id: str, user_id: str, user_query: str, bot_
 def clear_conversation_history(channel_id: str) -> bool:
     """Clear conversation history for a channel"""
     return redis_memory.clear_conversation_history(channel_id)
+
+
+def clear_session_memory(channel_id: str) -> bool:
+    """Clear all session memory (short-term) for a channel"""
+    return redis_memory.clear_session_memory(channel_id)
 
 
 def get_memory_stats() -> Dict:
