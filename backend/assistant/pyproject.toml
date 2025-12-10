@@ -1,0 +1,54 @@
+[project]
+name = "monkedh"
+version = "0.1.0"
+description = "monkedh using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "crewai[tools]>=0.121.0,<1.0.0",
+    "pdf2image>=1.17.0",
+    "pdfplumber>=0.11.7",
+    "pi-heif>=1.1.1",
+    "pillow>=12.0.0",
+    "pymupdf>=1.26.6",
+    "pymupdf4llm>=0.1.9",
+    "pypdf>=6.1.3",
+    "redis>=7.0.1",
+    "unstructured>=0.18.18",
+    "unstructured-inference>=1.1.1",
+    "unstructured-pytesseract>=0.3.15",
+    "qdrant-client>=1.12.0",
+    "ollama>=0.4.0",
+    "transformers>=4.57.1",
+    "sentence-transformers>=5.1.2",
+    "torch>=2.9.0",
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "streamlit>=1.28.0",
+    "requests>=2.31.0",
+    "pyrefly>=0.43.1",
+    "clip>=0.2.0",
+    "openai-clip>=1.0.1",
+    "azure-cognitiveservices-speech>=1.35.0",
+    "pyaudio>=0.2.14",
+    "websockets>=15.0.1",
+]
+
+[project.scripts]
+monkedh = "monkedh.main:run"
+run_crew = "monkedh.main:run"
+train = "monkedh.main:train"
+replay = "monkedh.main:replay"
+test = "monkedh.main:test"
+voice = "monkedh.main:run_voice_entry"
+voice_old = "monkedh.main_voice:run_voice"
+voice_tts = "monkedh.main_voice:run_tts_only"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
+
+
