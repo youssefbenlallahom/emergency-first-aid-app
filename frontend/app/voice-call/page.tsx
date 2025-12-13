@@ -1,65 +1,69 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, ArrowLeft, Heart, Sparkles, Shield, MessageCircle, Zap, Activity, WifiOff, Send } from "lucide-react"
+import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, ArrowLeft, Heart, Shield, MessageCircle, Zap, Activity, WifiOff, Send, Radio, Waves } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
-import { useState, useEffect, useCallback, useRef } from "react"
-import { VoiceConnection, VoiceServerMessage, isApiAvailable } from "@/lib/api"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { isApiAvailable } from "@/lib/api"
+import { useWebRTCVoice, VoiceState } from "@/hooks/useWebRTCVoice"
 
-type CallState = "idle" | "connecting" | "listening" | "speaking" | "ended"
+type CallState = "idle" | "disconnected" | "connecting" | "connected" | "listening" | "user_speaking" | "processing" | "speaking" | "ended" | "error"
 
-function VoiceWaveform({
+// ===========================================
+// Audio-Synchronized Waveform Component
+// ===========================================
+function AudioWaveform({
+  audioLevel,
   isActive,
   isSpeaking,
+  barCount = 48,
 }: {
+  audioLevel: number
   isActive: boolean
   isSpeaking: boolean
+  barCount?: number
 }) {
-  const bars = 45
+  const bars = useMemo(() => Array.from({ length: barCount }), [barCount])
 
   return (
-    <div className="flex items-center justify-center gap-0.5 sm:gap-1 h-36 sm:h-40 px-4">
-      {Array.from({ length: bars }).map((_, i) => {
-        const center = bars / 2
+    <div className="flex items-center justify-center gap-[2px] sm:gap-1 h-32 sm:h-40 px-4">
+      {bars.map((_, i) => {
+        const center = barCount / 2
         const distanceFromCenter = Math.abs(i - center) / center
-        const maxHeight = isSpeaking ? 110 : 70
-        const baseHeight = (1 - distanceFromCenter * 0.7) * maxHeight
+
+        // Base height influenced by position (higher in center)
+        const positionFactor = 1 - distanceFromCenter * 0.6
+
+        // Audio level influence (stable)
+        const audioFactor = audioLevel
+
+        // Calculate final height
+        const minHeight = 4
+        const maxHeight = isSpeaking ? 120 : 80
+        const targetHeight = minHeight + (maxHeight - minHeight) * positionFactor * audioFactor
+
+        // Color based on speaking state
+        const gradient = isSpeaking
+          ? "from-emerald-400 via-green-400 to-teal-300"
+          : "from-cyan-400 via-teal-400 to-cyan-300"
+
+        const glowColor = isSpeaking
+          ? "rgba(52, 211, 153, 0.6)"
+          : "rgba(34, 211, 238, 0.6)"
 
         return (
-          <motion.div
+          <div
             key={i}
-            className={`w-1 sm:w-1.5 rounded-full ${
-              isSpeaking
-                ? "bg-gradient-to-t from-emerald-500 via-green-400 to-emerald-300"
-                : "bg-gradient-to-t from-cyan-500 via-teal-400 to-cyan-300"
-            }`}
-            initial={{ height: 4 }}
-            animate={
-              isActive
-                ? {
-                    height: [
-                      4,
-                      baseHeight * (0.3 + Math.random() * 0.7),
-                      baseHeight * (0.2 + Math.random() * 0.8),
-                      baseHeight * (0.4 + Math.random() * 0.6),
-                      4,
-                    ],
-                  }
-                : { height: 4 }
-            }
-            transition={{
-              duration: isSpeaking ? 0.25 : 0.45,
-              repeat: isActive ? Infinity : 0,
-              delay: i * 0.015,
-              ease: "easeInOut",
-            }}
+            className={`w-1 sm:w-1.5 rounded-full bg-gradient-to-t ${gradient}`}
             style={{
-              boxShadow: isActive
-                ? isSpeaking
-                  ? "0 0 15px rgba(34, 197, 94, 0.5), 0 0 30px rgba(34, 197, 94, 0.2)"
-                  : "0 0 15px rgba(8, 145, 178, 0.5), 0 0 30px rgba(8, 145, 178, 0.2)"
+              height: isActive ? Math.max(minHeight, targetHeight) : minHeight,
+              opacity: isActive ? 0.7 + audioLevel * 0.3 : 0.3,
+              boxShadow: isActive && audioLevel > 0.1
+                ? `0 0 ${8 + audioLevel * 15}px ${glowColor}`
                 : "none",
+              transition: "height 70ms ease-out, opacity 120ms ease-out",
+              willChange: isActive ? "height, opacity" : undefined,
             }}
           />
         )
@@ -68,146 +72,162 @@ function VoiceWaveform({
   )
 }
 
-function PulseRings({ isActive, color }: { isActive: boolean; color: string }) {
+// ===========================================
+// Pulse Rings with Audio Response
+// ===========================================
+function AudioPulseRings({
+  audioLevel,
+  isActive,
+  isSpeaking,
+}: {
+  audioLevel: number
+  isActive: boolean
+  isSpeaking: boolean
+}) {
+  const baseColor = isSpeaking ? "border-emerald-500" : "border-cyan-500"
+
   return (
     <div className="absolute inset-0 flex items-center justify-center">
-      {[1, 2, 3, 4].map((ring) => (
-        <motion.div
-          key={ring}
-          className={`absolute rounded-full border-2 ${color}`}
-          style={{
-            width: 130 + ring * 45,
-            height: 130 + ring * 45,
-          }}
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={
-            isActive
-              ? {
-                  scale: [0.8, 1.3, 0.8],
-                  opacity: [0, 0.35, 0],
+      {[1, 2, 3, 4, 5].map((ring) => {
+        const ringScale = 1 + audioLevel * 0.3 * ring
+        const ringOpacity = Math.max(0, 0.4 - ring * 0.08) * (0.5 + audioLevel * 0.5)
+
+        return (
+          <motion.div
+            key={ring}
+            className={`absolute rounded-full border-2 ${baseColor}`}
+            style={{
+              width: 120 + ring * 40,
+              height: 120 + ring * 40,
+            }}
+            animate={
+              isActive
+                ? {
+                  scale: [ringScale * 0.9, ringScale * 1.1, ringScale * 0.9],
+                  opacity: [ringOpacity * 0.8, ringOpacity, ringOpacity * 0.8],
                 }
-              : { scale: 0.8, opacity: 0 }
-          }
-          transition={{
-            duration: 2.5,
-            repeat: Infinity,
-            delay: ring * 0.35,
-            ease: "easeInOut",
-          }}
-        />
-      ))}
+                : { scale: 0.8, opacity: 0 }
+            }
+            transition={{
+              duration: 0.8 + ring * 0.2,
+              repeat: Infinity,
+              delay: ring * 0.1,
+              ease: "easeInOut",
+            }}
+          />
+        )
+      })}
     </div>
   )
 }
 
-function FloatingSparkles({ isActive }: { isActive: boolean }) {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {Array.from({ length: 30 }).map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute"
-          initial={{
-            x: `${50 + (Math.random() - 0.5) * 20}%`,
-            y: "50%",
-            scale: 0,
-          }}
-          animate={
-            isActive
-              ? {
-                  x: `${50 + (Math.random() - 0.5) * 100}%`,
-                  y: `${50 + (Math.random() - 0.5) * 100}%`,
-                  scale: [0, 1, 0],
-                  rotate: [0, 180, 360],
-                }
-              : {}
-          }
-          transition={{
-            duration: 2.5 + Math.random() * 2,
-            repeat: Infinity,
-            delay: i * 0.12,
-            ease: "easeOut",
-          }}
-        >
-          <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-cyan-400/50" />
-        </motion.div>
-      ))}
-    </div>
-  )
-}
 
-// Animated background gradient
-function AnimatedBackground() {
+// ===========================================
+// Animated Background
+// ===========================================
+function AnimatedBackground({ audioLevel }: { audioLevel: number }) {
   return (
     <div className="absolute inset-0 overflow-hidden">
       <motion.div
-        className="absolute inset-0 bg-gradient-to-br from-slate-900 via-cyan-950/50 to-slate-900"
+        className="absolute inset-0"
         animate={{
           background: [
-            "linear-gradient(135deg, rgb(15, 23, 42) 0%, rgba(8, 51, 68, 0.5) 50%, rgb(15, 23, 42) 100%)",
-            "linear-gradient(135deg, rgb(15, 23, 42) 0%, rgba(6, 78, 59, 0.3) 50%, rgb(15, 23, 42) 100%)",
-            "linear-gradient(135deg, rgb(15, 23, 42) 0%, rgba(8, 51, 68, 0.5) 50%, rgb(15, 23, 42) 100%)",
+            `radial-gradient(ellipse at center, rgba(6, 182, 212, ${0.15 + audioLevel * 0.1}) 0%, rgba(15, 23, 42, 1) 70%)`,
+            `radial-gradient(ellipse at center, rgba(20, 184, 166, ${0.15 + audioLevel * 0.1}) 0%, rgba(15, 23, 42, 1) 70%)`,
+            `radial-gradient(ellipse at center, rgba(6, 182, 212, ${0.15 + audioLevel * 0.1}) 0%, rgba(15, 23, 42, 1) 70%)`,
           ],
         }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       />
     </div>
   )
 }
 
-// Call Timer Component
-function CallTimer({ isActive }: { isActive: boolean }) {
-  const [seconds, setSeconds] = useState(0)
 
-  useEffect(() => {
-    if (!isActive) {
-      setSeconds(0)
-      return
-    }
-    const interval = setInterval(() => setSeconds((s) => s + 1), 1000)
-    return () => clearInterval(interval)
-  }, [isActive])
-
-  const formatTime = (s: number) => {
-    const mins = Math.floor(s / 60)
-    const secs = s % 60
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+// ===========================================
+// Status Indicator
+// ===========================================
+function StatusIndicator({ state }: { state: CallState }) {
+  const config: Record<CallState, { icon: typeof Mic; color: string; text: string }> = {
+    listening: { icon: Mic, color: "from-cyan-400 to-teal-500", text: "Écoute..." },
+    user_speaking: { icon: Radio, color: "from-blue-400 to-cyan-500", text: "Parole détectée" },
+    processing: { icon: Activity, color: "from-amber-400 to-orange-500", text: "Traitement..." },
+    speaking: { icon: Volume2, color: "from-emerald-400 to-green-500", text: "Réponse..." },
+    connecting: { icon: Waves, color: "from-purple-400 to-pink-500", text: "Connexion..." },
+    connected: { icon: Waves, color: "from-green-400 to-emerald-500", text: "Connecté" },
+    idle: { icon: Phone, color: "from-slate-400 to-slate-500", text: "Prêt" },
+    disconnected: { icon: Phone, color: "from-slate-400 to-slate-500", text: "Déconnecté" },
+    ended: { icon: Heart, color: "from-rose-400 to-red-500", text: "Terminé" },
+    error: { icon: WifiOff, color: "from-red-400 to-rose-500", text: "Erreur" },
   }
+
+  const current = config[state]
+  const Icon = current.icon
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full border border-white/20"
+      key={state}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r ${current.color} shadow-lg`}
     >
-      <motion.div 
-        className="w-2 h-2 rounded-full bg-red-500"
-        animate={{ opacity: [1, 0.3, 1] }}
-        transition={{ duration: 1, repeat: Infinity }}
-      />
-      <span className="text-lg sm:text-xl font-mono text-white/90 tracking-wider font-medium">
-        {formatTime(seconds)}
-      </span>
+      <Icon className="w-4 h-4 text-white" />
+      <span className="text-sm font-medium text-white">{current.text}</span>
     </motion.div>
   )
 }
 
+// ===========================================
+// Main Voice Call Page
+// ===========================================
 export default function VoiceCallPage() {
-  const [callState, setCallState] = useState<CallState>("idle")
-  const [isMuted, setIsMuted] = useState(false)
+  // WebRTC Voice Hook
+  const {
+    state: webrtcState,
+    inputLevel: inputAudioLevel,
+    outputLevel: outputAudioLevel,
+    transcripts,
+    connect,
+    disconnect,
+    interrupt,
+    toggleMic,
+    isMuted
+  } = useWebRTCVoice({
+    voice: 'cedar',
+    onStateChange: (newState) => {
+      console.log('WebRTC state:', newState);
+    },
+    onError: (error) => {
+      console.error('WebRTC error:', error);
+      setIsApiConnected(false);
+    },
+    onDebug: (msg) => addLog(msg)
+  });
+
+  // Map WebRTC state to CallState
+  const [callEnded, setCallEnded] = useState(false);
+  const callState: CallState = callEnded ? 'ended' : (webrtcState === 'disconnected' ? 'idle' : webrtcState);
+
+  // UI State
+  // Removed local isMuted state in favor of hook state
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
   const [isApiConnected, setIsApiConnected] = useState(true)
-  const [transcript, setTranscript] = useState("")
-  const [response, setResponse] = useState("")
-  const [isListening, setIsListening] = useState(false)
   const [textInput, setTextInput] = useState("")
-  
-  // Refs for WebSocket and Speech Recognition
-  const voiceConnectionRef = useRef<VoiceConnection | null>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
-  const synthRef = useRef<SpeechSynthesisUtterance | null>(null)
+  // ... (rest of component) ...
 
-  // Check API availability on mount
+  // Mute toggle handler
+  const handleMuteToggle = useCallback(() => {
+    if (toggleMic) {
+      toggleMic();
+    }
+  }, [toggleMic]);
+
+  // Combined audio level for visualization
+  const audioLevel = callState === "speaking" || callState === "processing"
+    ? outputAudioLevel
+    : inputAudioLevel
+
+  // Check API availability
   useEffect(() => {
     const checkApi = async () => {
       const available = await isApiAvailable()
@@ -218,274 +238,83 @@ export default function VoiceCallPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Initialize Speech Recognition
-  const initSpeechRecognition = useCallback(() => {
-    if (typeof window === 'undefined') return null
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      console.warn('Speech Recognition not supported')
-      return null
-    }
-    
-    const recognition = new SpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'fr-FR'
-    
-    recognition.onresult = (event) => {
-      let finalTranscript = ''
-      let interimTranscript = ''
-      
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript
-        } else {
-          interimTranscript += transcript
-        }
-      }
-      
-      setTranscript(interimTranscript || finalTranscript)
-      
-      // Send final transcript to WebSocket
-      if (finalTranscript && voiceConnectionRef.current?.isConnected()) {
-        voiceConnectionRef.current.sendText(finalTranscript)
-        setTranscript('')
-        setCallState('speaking') // AI is processing/responding
-      }
-    }
-    
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error)
-      if (event.error !== 'aborted') {
-        setIsListening(false)
-      }
-    }
-    
-    recognition.onend = () => {
-      // Restart recognition if still in listening mode
-      if (callState === 'listening' && !isMuted && recognitionRef.current) {
-        try {
-          recognitionRef.current.start()
-        } catch (e) {
-          console.log('Recognition restart prevented:', e)
-        }
-      }
-    }
-    
-    return recognition
-  }, [callState, isMuted])
-
-  // Handle WebSocket messages
-  const handleVoiceMessage = useCallback((message: VoiceServerMessage) => {
-    switch (message.type) {
-      case 'status':
-        if (message.state === 'connected') {
-          setCallState('listening')
-        } else if (message.state === 'processing') {
-          setCallState('speaking')
-        } else if (message.state === 'listening') {
-          setCallState('listening')
-        } else if (message.state === 'ended') {
-          setCallState('ended')
-        }
-        break
-      case 'response':
-        if (message.text) {
-          setResponse(message.text)
-          // Use Text-to-Speech for the response
-          if (isSpeakerOn && 'speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(message.text)
-            utterance.lang = 'fr-FR'
-            utterance.rate = 1.0
-            utterance.pitch = 1.0
-            utterance.onend = () => {
-              setCallState('listening')
-            }
-            synthRef.current = utterance
-            speechSynthesis.speak(utterance)
-          } else {
-            // If TTS is off, go back to listening after a delay
-            setTimeout(() => setCallState('listening'), 2000)
-          }
-        }
-        break
-      case 'transcript':
-        if (message.text) {
-          setTranscript(message.text)
-        }
-        break
-      case 'error':
-        console.error('Voice error:', message.message)
-        break
-    }
-  }, [isSpeakerOn])
-
+  // Start call using WebRTC
   const startCall = useCallback(async () => {
-    setCallState("connecting")
-    setResponse("")
-    setTranscript("")
-    
     try {
-      // Connect to WebSocket
-      const connection = new VoiceConnection()
-      voiceConnectionRef.current = connection
-      
-      await connection.connect(handleVoiceMessage)
-      
-      // Initialize and start speech recognition
-      const recognition = initSpeechRecognition()
-      if (recognition) {
-        recognitionRef.current = recognition
-        recognition.start()
-        setIsListening(true)
-      }
-      
-      setCallState("listening")
+      await connect();
     } catch (error) {
-      console.error('Failed to start call:', error)
-      setCallState("idle")
-      setIsApiConnected(false)
+      console.error("Failed to start call:", error);
+      setIsApiConnected(false);
     }
-  }, [handleVoiceMessage, initSpeechRecognition])
+  }, [connect]);
 
+  // End call
   const endCall = useCallback(() => {
-    // Stop speech recognition
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-      recognitionRef.current = null
-    }
-    setIsListening(false)
-    
-    // Stop any ongoing speech synthesis
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
-    
-    // Disconnect WebSocket
-    if (voiceConnectionRef.current) {
-      voiceConnectionRef.current.endSession()
-      voiceConnectionRef.current.disconnect()
-      voiceConnectionRef.current = null
-    }
-    
-    setCallState("ended")
-    setTimeout(() => setCallState("idle"), 2000)
+    disconnect();
+    setCallEnded(true);
+    setTimeout(() => setCallEnded(false), 2000);
+  }, [disconnect]);
+
+  // Send text message (placeholder - WebRTC uses data channel)
+  const sendTextMessage = useCallback(() => {
+    // TODO: Implement text message via data channel if needed
+    setTextInput("");
+  }, []);
+
+  const isCallActive = ["listening", "user_speaking", "processing", "speaking", "connecting", "connected"].includes(callState)
+
+  // Debug logs state
+  const [logs, setLogs] = useState<string[]>([])
+  const addLog = useCallback((msg: string) => {
+    setLogs(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${msg}`].slice(-10))
   }, [])
 
-  // Handle mute toggle
+  // Expose WebRTC logs to UI
   useEffect(() => {
-    if (recognitionRef.current) {
-      if (isMuted) {
-        recognitionRef.current.stop()
-        setIsListening(false)
-      } else if (callState === 'listening') {
-        try {
-          recognitionRef.current.start()
-          setIsListening(true)
-        } catch (e) {
-          console.log('Already started:', e)
-        }
-      }
-    }
-  }, [isMuted, callState])
-
-  // Handle speaker toggle
-  useEffect(() => {
-    if (!isSpeakerOn && 'speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
-  }, [isSpeakerOn])
-
-  // Send text message manually
-  const sendTextMessage = useCallback(() => {
-    if (textInput.trim() && voiceConnectionRef.current?.isConnected()) {
-      voiceConnectionRef.current.sendText(textInput.trim())
-      setTextInput('')
-      setCallState('speaking')
-    }
-  }, [textInput])
-
-  const getStatusText = () => {
-    switch (callState) {
-      case "idle":
-        return "Prêt à vous assister"
-      case "connecting":
-        return "Connexion en cours..."
-      case "listening":
-        return "Je vous écoute..."
-      case "speaking":
-        return "Je vous guide..."
-      case "ended":
-        return "Appel terminé"
-      default:
-        return ""
-    }
-  }
-
-  const getStatusSubtext = () => {
-    switch (callState) {
-      case "connecting":
-        return "Préparation de l'assistant vocal..."
-      case "listening":
-        return "Décrivez la situation d'urgence clairement"
-      case "speaking":
-        return "Suivez attentivement les instructions"
-      default:
-        return ""
-    }
-  }
-
-  const isCallActive = ["listening", "speaking", "connecting"].includes(callState)
+    if (webrtcState) addLog(`WebRTC State: ${webrtcState}`)
+  }, [webrtcState, addLog])
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={callState === "idle" ? "idle" : "active"}
+        key={callState === "idle" || callState === "ended" ? "idle" : "active"}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`min-h-[100dvh] relative overflow-hidden ${
-          isCallActive
-            ? "bg-slate-900"
-            : "bg-gradient-to-b from-slate-50 via-cyan-50/30 to-slate-50"
-        }`}
+        className={`min-h-[100dvh] relative overflow-hidden ${isCallActive
+          ? "bg-slate-900"
+          : "bg-gradient-to-b from-slate-50 via-cyan-50/30 to-slate-50"
+          }`}
       >
-        {/* Background Effects for Active Call */}
-        {isCallActive && (
-          <>
-            <AnimatedBackground />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/40 via-transparent to-transparent" />
-            <FloatingSparkles isActive={callState === "speaking"} />
-          </>
-        )}
+        {/* Background Effects removed for performance */}
 
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`sticky top-0 z-50 safe-area-top ${
-            isCallActive ? "bg-transparent" : "backdrop-blur-2xl bg-white/85 border-b border-slate-100/50 shadow-sm"
-          }`}
+          className={`sticky top-0 z-50 safe-area-top ${isCallActive ? "bg-transparent" : "backdrop-blur-2xl bg-white/85 border-b border-slate-100/50 shadow-sm"
+            }`}
         >
           <div className="w-full max-w-3xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
             <Link
               href="/"
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all active:scale-95 ${
-                isCallActive
-                  ? "text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20"
-                  : "text-slate-600 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200"
-              }`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all active:scale-95 ${isCallActive
+                ? "text-white/80 hover:text-white hover:bg-white/10"
+                : "text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                }`}
             >
-              <motion.div whileHover={{ x: -3 }} whileTap={{ scale: 0.95 }}>
-                <ArrowLeft className="w-5 h-5" />
-              </motion.div>
+              <ArrowLeft className="w-5 h-5" />
               <span className="font-medium text-sm sm:text-base">Retour</span>
             </Link>
-            {isCallActive && <CallTimer isActive={isCallActive} />}
+
+            {isCallActive && (
+              <div className="flex items-center gap-3">
+                <StatusIndicator state={callState} />
+              </div>
+            )}
+
             {!isCallActive && (
-              <Link 
+              <Link
                 href="/chat"
                 className="flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-[#0891B2] hover:bg-cyan-50 rounded-xl transition-all"
               >
@@ -497,7 +326,13 @@ export default function VoiceCallPage() {
         </motion.header>
 
         <main className="w-full max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-8 relative z-10">
-          {/* Idle State - Enhanced */}
+          {/* DEBUG LOGS OVERLAY */}
+          <div className="fixed bottom-4 left-4 z-50 w-64 max-h-48 overflow-y-auto bg-black/80 text-green-400 text-[10px] font-mono p-2 rounded pointer-events-none opacity-70">
+            <div>DEBUG LOGS:</div>
+            {logs.map((L, i) => <div key={i}>{L}</div>)}
+          </div>
+
+          {/* Idle State */}
           {callState === "idle" && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-8">
               {/* API Connection Warning */}
@@ -510,23 +345,18 @@ export default function VoiceCallPage() {
                   <WifiOff className="w-5 h-5 text-amber-500" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-amber-800">Mode hors ligne</p>
-                    <p className="text-xs text-amber-600">L'assistant vocal n'est pas disponible actuellement</p>
+                    <p className="text-xs text-amber-600">L&apos;assistant vocal n&apos;est pas disponible</p>
                   </div>
                 </motion.div>
               )}
-              
+
               {/* Hero Card */}
-              <motion.div 
+              <motion.div
                 className="bg-white rounded-3xl p-5 sm:p-7 shadow-xl shadow-slate-200/50 border border-slate-100"
                 whileHover={{ y: -2, boxShadow: "0 25px 50px -12px rgba(0,0,0,0.12)" }}
-                transition={{ duration: 0.3 }}
               >
                 <div className="flex items-center gap-4 sm:gap-5 mb-4 sm:mb-5">
-                  <motion.div 
-                    className="relative" 
-                    whileHover={{ scale: 1.05, rotate: 3 }}
-                    transition={{ type: "spring", stiffness: 300 }}
-                  >
+                  <motion.div className="relative" whileHover={{ scale: 1.05, rotate: 3 }}>
                     <div className="w-18 h-18 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-cyan-100 via-teal-50 to-emerald-100 border-3 border-white shadow-xl overflow-hidden">
                       <Image
                         src="/images/logo-llama.png"
@@ -550,30 +380,36 @@ export default function VoiceCallPage() {
                       Assistant Vocal IA
                     </h1>
                     <p className="text-sm sm:text-base text-slate-500 mt-1">
-                      🇹🇳 Secourisme d'urgence Tunisie
+                      🇹🇳 Secourisme d&apos;urgence Tunisie
                     </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
+                        GPT-Realtime
+                      </span>
+                      <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 text-xs font-medium rounded-full">
+                        Audio bidirectionnel
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                  Notre assistant vocal intelligent vous guide en <span className="font-semibold text-[#0891B2]">temps réel</span> avec des instructions de premiers secours claires et précises. 
-                  Décrivez simplement la situation d'urgence.
+                  Communication vocale en <span className="font-semibold text-[#0891B2]">temps réel</span> avec notre IA médicale.
+                  Parlez naturellement - l&apos;assistant vous répond instantanément avec une voix naturelle.
                 </p>
               </motion.div>
 
-              {/* Call Button - Enhanced */}
+              {/* Call Button */}
               <div className="flex flex-col items-center gap-5 sm:gap-7 py-4">
                 <motion.button
-                  onClick={startCall}
+                  onClick={() => { addLog('Start Call Clicked'); startCall(); }}
                   disabled={!isApiConnected}
-                  className={`relative w-32 h-32 sm:w-40 sm:h-40 rounded-full text-white shadow-2xl active:scale-95 ${
-                    isApiConnected 
-                      ? "bg-gradient-to-br from-[#22C55E] via-emerald-500 to-green-600 shadow-emerald-500/50" 
-                      : "bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600 shadow-slate-500/50 cursor-not-allowed"
-                  }`}
+                  className={`relative w-32 h-32 sm:w-40 sm:h-40 rounded-full text-white shadow-2xl active:scale-95 ${isApiConnected
+                    ? "bg-gradient-to-br from-[#22C55E] via-emerald-500 to-green-600 shadow-emerald-500/50"
+                    : "bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600 shadow-slate-500/50 cursor-not-allowed"
+                    }`}
                   whileHover={isApiConnected ? { scale: 1.08 } : {}}
                   whileTap={isApiConnected ? { scale: 0.95 } : {}}
                 >
-                  {/* Pulse rings */}
                   {[1, 2, 3].map((ring) => (
                     <motion.div
                       key={ring}
@@ -592,35 +428,29 @@ export default function VoiceCallPage() {
                   <div className="relative z-10 flex items-center justify-center">
                     <Phone className="w-12 h-12 sm:w-16 sm:h-16" />
                   </div>
-                  
-                  {/* Shine effect */}
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/20 to-transparent"
-                    initial={{ rotate: 0 }}
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                  />
                 </motion.button>
 
                 <div className="text-center">
-                  <motion.p 
+                  <motion.p
                     className="text-xl sm:text-2xl font-bold text-slate-800"
                     animate={{ scale: [1, 1.02, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
-                    Démarrer l'appel
+                    Démarrer l&apos;appel vocal
                   </motion.p>
-                  <p className="text-sm sm:text-base text-slate-500 mt-1.5">Appuyez pour parler à l'assistant IA</p>
+                  <p className="text-sm sm:text-base text-slate-500 mt-1.5">
+                    Conversation naturelle avec l&apos;IA
+                  </p>
                 </div>
               </div>
 
-              {/* Features - Enhanced */}
+              {/* Features aligned with grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 {[
-                  { icon: Mic, label: "Voix naturelle", color: "text-cyan-600", bg: "bg-gradient-to-br from-cyan-50 to-teal-50", border: "border-cyan-100" },
+                  { icon: Waves, label: "Voix naturelle", color: "text-cyan-600", bg: "bg-gradient-to-br from-cyan-50 to-teal-50", border: "border-cyan-100" },
                   { icon: Heart, label: "Guide CPR", color: "text-red-500", bg: "bg-gradient-to-br from-red-50 to-rose-50", border: "border-red-100" },
                   { icon: Zap, label: "Temps réel", color: "text-amber-500", bg: "bg-gradient-to-br from-amber-50 to-orange-50", border: "border-amber-100" },
-                  { icon: Shield, label: "Fiable 24/7", color: "text-emerald-600", bg: "bg-gradient-to-br from-emerald-50 to-green-50", border: "border-emerald-100" },
+                  { icon: Shield, label: "24/7", color: "text-emerald-600", bg: "bg-gradient-to-br from-emerald-50 to-green-50", border: "border-emerald-100" },
                 ].map((feature, index) => (
                   <motion.div
                     key={feature.label}
@@ -628,20 +458,15 @@ export default function VoiceCallPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    whileHover={{ scale: 1.05, y: -4, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.1)" }}
+                    whileHover={{ scale: 1.05, y: -4 }}
                   >
-                    <motion.div
-                      whileHover={{ rotate: [0, -10, 10, 0] }}
-                      transition={{ duration: 0.4 }}
-                    >
-                      <feature.icon className={`w-6 h-6 sm:w-7 sm:h-7 mx-auto mb-2 ${feature.color}`} />
-                    </motion.div>
+                    <feature.icon className={`w-6 h-6 sm:w-7 sm:h-7 mx-auto mb-2 ${feature.color}`} />
                     <span className="text-xs sm:text-sm font-semibold text-slate-700">{feature.label}</span>
                   </motion.div>
                 ))}
               </div>
 
-              {/* Emergency Info Card */}
+              {/* Emergency Info */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -655,7 +480,7 @@ export default function VoiceCallPage() {
                   <div className="flex-1">
                     <h3 className="font-bold text-slate-800 mb-1">Urgence vitale ?</h3>
                     <p className="text-sm text-slate-600">
-                      En cas de danger immédiat, appelez directement le <span className="font-bold text-red-600">190 (SAMU)</span>
+                      En cas de danger immédiat, appelez le <span className="font-bold text-red-600">190 (SAMU)</span>
                     </p>
                   </div>
                   <a href="tel:190">
@@ -672,170 +497,125 @@ export default function VoiceCallPage() {
             </motion.div>
           )}
 
-          {/* Active Call State - Enhanced */}
+          {/* Active Call State - Same as before but wrapped */}
           {isCallActive && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="flex flex-col items-center justify-center min-h-[65vh] sm:min-h-[70vh] space-y-5 sm:space-y-7"
+              className="flex flex-col items-center justify-center min-h-[65vh] sm:min-h-[70vh] space-y-4 sm:space-y-6"
             >
-              <div className="relative">
-                <PulseRings
+              {/* Avatar with Visualizers */}
+              <div className="relative w-72 h-72 sm:w-80 sm:h-80">
+                <AudioPulseRings
+                  audioLevel={audioLevel}
                   isActive={isCallActive}
-                  color={callState === "speaking" ? "border-emerald-500/30" : "border-cyan-500/30"}
+                  isSpeaking={callState === "speaking"}
                 />
 
+                {/* Central Avatar */}
                 <motion.div
-                  className="relative z-10"
-                  animate={callState === "speaking" ? { scale: [1, 1.1, 1] } : { scale: 1 }}
-                  transition={{ duration: 0.6, repeat: callState === "speaking" ? Infinity : 0 }}
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
+                  animate={callState === "speaking" ? { scale: [1, 1.05, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.5, repeat: callState === "speaking" ? Infinity : 0 }}
                 >
-                  <div
-                    className={`w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-cyan-100 via-teal-50 to-emerald-100 backdrop-blur-xl border-3 border-white/30 flex items-center justify-center shadow-2xl overflow-hidden`}
-                  >
-                    {/* Logo Llama animé - centré */}
-                    <div className="relative w-full h-full overflow-hidden rounded-full bg-black flex items-center justify-center">
-                      <img
-                        src="/animations/logo_llama.gif"
-                        alt="Assistant IA Monkedh"
-                        className="w-[95%] h-[95%] object-contain"
-                      />
-                    </div>
+                  <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-black border-4 border-white/20 shadow-2xl overflow-hidden">
+                    <Image
+                      src="/animations/logo_llama.gif"
+                      alt="Assistant IA"
+                      width={128}
+                      height={128}
+                      className="w-full h-full object-contain"
+                      unoptimized
+                    />
                   </div>
 
-                  {/* Status indicator */}
+                  {/* Status Badge */}
                   <motion.div
-                    className={`absolute -bottom-2 -right-2 sm:-bottom-3 sm:-right-3 w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shadow-xl ${
-                      callState === "speaking"
-                        ? "bg-gradient-to-r from-emerald-400 to-green-500"
-                        : callState === "listening"
-                          ? "bg-gradient-to-r from-cyan-400 to-teal-500"
-                          : "bg-gradient-to-r from-amber-400 to-orange-500"
-                    }`}
+                    className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-full flex items-center justify-center shadow-xl ${callState === "speaking"
+                      ? "bg-gradient-to-r from-emerald-400 to-green-500"
+                      : callState === "user_speaking"
+                        ? "bg-gradient-to-r from-blue-400 to-cyan-500"
+                        : callState === "processing"
+                          ? "bg-gradient-to-r from-amber-400 to-orange-500"
+                          : "bg-gradient-to-r from-cyan-400 to-teal-500"
+                      }`}
                     animate={{ scale: [1, 1.2, 1] }}
                     transition={{ duration: 0.8, repeat: Infinity }}
                   >
                     {callState === "speaking" ? (
-                      <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                    ) : callState === "listening" ? (
-                      <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      <Volume2 className="w-5 h-5 text-white" />
+                    ) : callState === "processing" ? (
+                      <Activity className="w-5 h-5 text-white" />
                     ) : (
-                      <motion.div 
-                        className="w-3 h-3 sm:w-4 sm:h-4 bg-white rounded-full"
-                        animate={{ opacity: [1, 0.3, 1] }}
-                        transition={{ duration: 0.6, repeat: Infinity }}
-                      />
+                      <Mic className="w-5 h-5 text-white" />
                     )}
                   </motion.div>
                 </motion.div>
               </div>
 
-              {/* Status Text - Enhanced */}
+              {/* Waveform Visualization */}
               <motion.div
-                key={callState}
-                initial={{ opacity: 0, y: 15 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-center px-4"
+                className="w-full max-w-md"
               >
-                <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">{getStatusText()}</h2>
-                <p className="text-sm sm:text-base text-white/60 max-w-xs mx-auto">
-                  {getStatusSubtext()}
-                </p>
-                {/* Show transcript while listening */}
-                {transcript && callState === 'listening' && (
-                  <motion.p
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="mt-3 text-cyan-300 italic text-sm"
-                  >
-                    "{transcript}"
-                  </motion.p>
-                )}
-                {/* Show AI response */}
-                {response && callState === 'speaking' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 max-h-32 overflow-y-auto bg-white/10 rounded-xl p-3 text-left"
-                  >
-                    <p className="text-emerald-300 text-sm leading-relaxed">{response}</p>
-                  </motion.div>
-                )}
-              </motion.div>
-
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }} 
-                animate={{ opacity: 1, y: 0 }} 
-                className="w-full max-w-sm sm:max-w-md"
-              >
-                <VoiceWaveform
-                  isActive={callState === "listening" || callState === "speaking"}
+                <AudioWaveform
+                  audioLevel={audioLevel}
+                  isActive={isCallActive}
                   isSpeaking={callState === "speaking"}
+                  barCount={28}
                 />
               </motion.div>
 
-              {/* Call Controls - Enhanced */}
+              {/* Call Controls */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex items-center gap-5 sm:gap-6"
+                className="flex items-center gap-5 sm:gap-6 pt-4"
               >
-                {/* Mute Button */}
+                {/* Mute */}
                 <motion.button
-                  onClick={() => setIsMuted(!isMuted)}
-                  className={`w-14 h-14 sm:w-18 sm:h-18 rounded-full flex items-center justify-center transition-all active:scale-90 ${
-                    isMuted
-                      ? "bg-red-500/30 text-red-400 border-2 border-red-500/50 shadow-lg shadow-red-500/20"
-                      : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30 border-2 border-white/20"
-                  }`}
+                  onClick={handleMuteToggle}
+                  className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all ${isMuted
+                    ? "bg-red-500/30 text-red-400 border-2 border-red-500/50"
+                    : "bg-white/15 text-white border-2 border-white/20 hover:bg-white/25"
+                    }`}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  {isMuted ? <MicOff className="w-6 h-6 sm:w-7 sm:h-7" /> : <Mic className="w-6 h-6 sm:w-7 sm:h-7" />}
+                  {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </motion.button>
 
-                {/* End Call Button */}
+                {/* End Call */}
                 <motion.button
                   onClick={endCall}
-                  className="w-18 h-18 sm:w-22 sm:h-22 rounded-full bg-gradient-to-br from-red-500 to-rose-600 text-white flex items-center justify-center shadow-2xl shadow-red-500/50 active:scale-90"
+                  className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-red-500 to-rose-600 text-white flex items-center justify-center shadow-2xl shadow-red-500/50"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <PhoneOff className="w-8 h-8 sm:w-10 sm:h-10" />
+                  <PhoneOff className="w-8 h-8" />
                 </motion.button>
 
-                {/* Speaker Button */}
+                {/* Speaker */}
                 <motion.button
                   onClick={() => setIsSpeakerOn(!isSpeakerOn)}
-                  className={`w-14 h-14 sm:w-18 sm:h-18 rounded-full flex items-center justify-center transition-all border-2 active:scale-90 ${
-                    !isSpeakerOn
-                      ? "bg-white/10 text-white/50 border-white/10"
-                      : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30 border-white/20"
-                  }`}
+                  className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all border-2 ${!isSpeakerOn
+                    ? "bg-white/10 text-white/50 border-white/10"
+                    : "bg-white/15 text-white border-white/20 hover:bg-white/25"
+                    }`}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  {isSpeakerOn ? <Volume2 className="w-6 h-6 sm:w-7 sm:h-7" /> : <VolumeX className="w-6 h-6 sm:w-7 sm:h-7" />}
+                  {isSpeakerOn ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
                 </motion.button>
               </motion.div>
 
-              {/* Tip text */}
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-                className="text-xs sm:text-sm text-white/40 text-center"
-              >
-                Parlez clairement et décrivez les symptômes observés
-              </motion.p>
-
-              {/* Text input fallback */}
+              {/* Text Input Fallback */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
+                transition={{ delay: 0.4 }}
                 className="w-full max-w-md px-4"
               >
                 <div className="flex items-center gap-2 bg-white/10 rounded-xl p-2 border border-white/20">
@@ -843,14 +623,14 @@ export default function VoiceCallPage() {
                     type="text"
                     value={textInput}
                     onChange={(e) => setTextInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && sendTextMessage()}
-                    placeholder="Ou tapez votre message ici..."
+                    onKeyDown={(e) => e.key === "Enter" && sendTextMessage()}
+                    placeholder="Ou tapez votre message..."
                     className="flex-1 bg-transparent text-white placeholder-white/40 text-sm px-3 py-2 focus:outline-none"
                   />
                   <motion.button
                     onClick={sendTextMessage}
                     disabled={!textInput.trim()}
-                    className="p-2 rounded-lg bg-cyan-500/30 text-cyan-300 hover:bg-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2 rounded-lg bg-cyan-500/30 text-cyan-300 hover:bg-cyan-500/50 disabled:opacity-50 transition-colors"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
@@ -861,41 +641,31 @@ export default function VoiceCallPage() {
             </motion.div>
           )}
 
-          {/* Ended State - Enhanced */}
+          {/* Ended State */}
           {callState === "ended" && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="flex flex-col items-center justify-center min-h-[65vh] sm:min-h-[70vh] space-y-5 sm:space-y-7 px-4"
+              className="flex flex-col items-center justify-center min-h-[65vh] space-y-6"
             >
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", bounce: 0.5 }}
-                className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-500/20 flex items-center justify-center border-2 border-emerald-500/30"
+                className="w-28 h-28 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-500/20 flex items-center justify-center border-2 border-emerald-500/30"
               >
-                <motion.div
-                  animate={{ scale: [1, 1.1, 1] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                >
-                  <Heart className="w-14 h-14 sm:w-16 sm:h-16 text-emerald-500" />
-                </motion.div>
+                <Heart className="w-14 h-14 text-emerald-500" />
               </motion.div>
               <div className="text-center space-y-2">
                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-800">Appel terminé</h2>
                 <p className="text-sm sm:text-base text-slate-500 max-w-xs mx-auto">
-                  Restez vigilant et n'hésitez pas à appeler le <span className="font-bold text-red-600">190</span> si la situation s'aggrave
+                  Restez vigilant. Appelez le <span className="font-bold text-red-600">190</span> si besoin.
                 </p>
               </div>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="flex gap-3"
-              >
+              <div className="flex gap-3">
                 <Link href="/">
                   <motion.button
-                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm hover:bg-slate-200 transition-colors"
+                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm hover:bg-slate-200"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
@@ -911,7 +681,7 @@ export default function VoiceCallPage() {
                     Continuer par chat
                   </motion.button>
                 </Link>
-              </motion.div>
+              </div>
             </motion.div>
           )}
         </main>

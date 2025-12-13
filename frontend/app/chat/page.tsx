@@ -45,6 +45,33 @@ const quickSuggestions = [
 // API base URL for images
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+function ChatMessageImage({
+  primarySrc,
+  fallbackSrc,
+  alt,
+}: {
+  primarySrc: string
+  fallbackSrc: string
+  alt: string
+}) {
+  const [src, setSrc] = useState(primarySrc)
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={1200}
+      height={800}
+      unoptimized
+      className="w-full h-auto max-h-64 object-contain"
+      style={{ width: "100%", height: "auto" }}
+      onError={() => {
+        if (src !== fallbackSrc) setSrc(fallbackSrc)
+      }}
+    />
+  )
+}
+
 // Parse message content and extract visual guides
 function parseMessageContent(content: string): { text: string; images: { path: string; description: string }[] } {
   const images: { path: string; description: string }[] = [];
@@ -181,16 +208,12 @@ function MessageContent({ content }: { content: string }) {
         >
           {/* Image */}
           <div className="relative w-full bg-white">
-            <img
-              src={`${API_BASE_URL}/images/${encodeURIComponent(img.path.replace('emergency_image_db/', ''))}`}
+            <ChatMessageImage
+              primarySrc={`${API_BASE_URL}/images/${encodeURIComponent(img.path.replace('emergency_image_db/', ''))}`}
+              fallbackSrc={`${API_BASE_URL}/images/${encodeURIComponent(
+                img.path.replace('emergency_image_db/', '').replace(/ – /g, ' - '),
+              )}`}
               alt={img.description || "Guide visuel"}
-              className="w-full h-auto max-h-64 object-contain"
-              onError={(e) => {
-                // Try alternative path format
-                const target = e.target as HTMLImageElement;
-                const altPath = img.path.replace('emergency_image_db/', '').replace(/ – /g, ' - ');
-                target.src = `${API_BASE_URL}/images/${encodeURIComponent(altPath)}`;
-              }}
             />
           </div>
           
@@ -315,7 +338,7 @@ function TypingIndicator() {
           }}
         />
       ))}
-      <span className="text-xs text-slate-400 ml-2">en train d'écrire...</span>
+      <span className="text-xs text-slate-400 ml-2">en train d&apos;écrire...</span>
     </div>
   )
 }

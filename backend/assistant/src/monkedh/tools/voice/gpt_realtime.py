@@ -37,37 +37,12 @@ class GPTRealtimeVoice:
     Full-duplex voice handler using Azure GPT-Realtime API.
     Single WebSocket for both speech recognition and audio synthesis.
     
-    Available voices:
-    - "alloy"   : Neutral, balanced (default)
-    - "shimmer" : Female, warm and friendly ⭐
-    - "nova"    : Female, professional ⭐
-    - "echo"    : Male, clear
-    - "fable"   : Male, British accent
-    - "onyx"    : Male, deep and authoritative
+    Voice: cedar (male, warm and human-like)
     """
     
-    # Voice options
-    VOICES = {
-        "alloy": "Neutral, balanced",
-        "shimmer": "Female, warm and friendly ⭐",
-        "nova": "Female, professional ⭐", 
-        "echo": "Male, clear",
-        "fable": "Male, British accent",
-        "onyx": "Male, deep and authoritative"
-    }
-    
-    def __init__(self, voice: str = "nova"):
-        """
-        Initialize GPT-Realtime voice handler.
-        
-        Args:
-            voice: Voice to use for TTS. Options:
-                   - "nova" (female, professional) ⭐ DEFAULT - Best for emergencies
-                   - "shimmer" (female, warm)
-                   - "alloy" (neutral)
-                   - "echo" (male, clear)
-                   - "fable" (male, British)
-                   - "onyx" (male, deep)
+    def __init__(self, voice: str = "cedar"):
+        """Initialize GPT-Realtime voice handler.
+        Default voice is cedar; accepts an optional voice name for compatibility.
         """
         self.api_key = os.getenv("AZURE_REALTIME_API_KEY")
         self.api_base = os.getenv("AZURE_REALTIME_API_BASE")
@@ -78,16 +53,22 @@ class GPTRealtimeVoice:
                 "Set AZURE_REALTIME_API_KEY and AZURE_REALTIME_API_BASE in .env"
             )
         
-        # Voice selection
-        self.voice = voice.lower() if voice.lower() in self.VOICES else "nova"
-        
+        # Voice selection (default cedar)
+        self.voice = voice or "cedar"
+
         # WebSocket URL
         self.ws_url = self.api_base.replace("https://", "wss://").replace("http://", "ws://")
-        
+
         # Audio settings (GPT-Realtime uses 24kHz mono PCM16)
         self.sample_rate = 24000
         self.channels = 1
         self.chunk_size = 2400  # 100ms at 24kHz
+
+        # Noise-handling defaults (tuned for city / car noise)
+        self.noise_reduction_type = "far_field"  # use far-field profile for noisy/echoey spaces
+        self.vad_threshold = 0.6  # require slightly louder speech to trigger
+        self.silence_duration_ms = 900  # wait longer before ending turn to avoid cut-offs
+        self.prefix_padding_ms = 350  # keep some pre-roll audio
         
         # State
         self.ws = None
@@ -96,7 +77,7 @@ class GPTRealtimeVoice:
         self.audio_queue = queue.Queue()
         self.transcript_queue = queue.Queue()
         
-        print(f"✅ GPT-Realtime Voice initialisé (voix: {self.voice} - {self.VOICES[self.voice]})")
+        print(f"✅ GPT-Realtime Voice initialisé (voix: cedar)")
     
     def is_available(self) -> bool:
         """Check if all dependencies are available."""
@@ -118,11 +99,14 @@ class GPTRealtimeVoice:
             "type": "session.update",
             "session": {
                 "modalities": ["text", "audio"],
-                "instructions": """Tu es un assistant médical d'urgence SAMU. 
-                Tu aides les gens en situation d'urgence médicale.
-                Réponds de manière claire, calme et concise en français.
-                Pose des questions pour évaluer la situation.
-                Donne des instructions de premiers secours si nécessaire.""",
+                "instructions": """Assistant vocal SAMU (français, oral seulement). Reformule et condense toujours.
+                - URGENCE VITALE: ton ferme, direct, 3-5 phrases max, verbes à l'impératif.
+                - Non vitale: ton calme, chaleureux, empathique.
+                - NE LIS PAS: URLs http/https, chemins d'image (emergency_image_db/...), balises/markdown (#, **, -, 1.), blocs code, métadonnées.
+                - Ignore les intitulés comme '📷 GUIDE VISUEL', 'FORMAT', 'EN ATTENDANT', tableaux ou listes numérotées: transforme-les en phrases simples.
+                - Si texte long: résume en 2-4 phrases naturelles, garde seulement l'action clé et la question finale.
+                - Pour les images: dis juste "je t'accompagne avec un guide visuel" sans lire le chemin; tu peux citer en une phrase ce que montre l'image.
+                - Ajoute l'émotion adaptée (rassurant si calme, urgence = ton ferme). Parle comme à quelqu'un au téléphone, pauses courtes.""",
                 "voice": self.voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
@@ -131,9 +115,12 @@ class GPTRealtimeVoice:
                 },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 800
+                    "threshold": self.vad_threshold,
+                    "prefix_padding_ms": self.prefix_padding_ms,
+                    "silence_duration_ms": self.silence_duration_ms
+                },
+                "input_audio_noise_reduction": {
+                    "type": self.noise_reduction_type
                 }
             }
         }
@@ -519,7 +506,7 @@ class GPTRealtimeVoice:
                     "type": "session.update",
                     "session": {
                         "modalities": ["text", "audio"],
-                        "voice": "alloy",
+                        "voice": "cedar",
                         "output_audio_format": "pcm16"
                     }
                 }

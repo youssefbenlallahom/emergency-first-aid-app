@@ -15,7 +15,7 @@ class FirstAidSearchInput(BaseModel):
         description="The search query in French. Ask about first aid procedures, emergency protocols, or medical interventions."
     )
     top_k: int = Field(
-        default=5,
+        default=3,
         description="Number of relevant results to return (default: 5)",
         ge=1,
         le=20
