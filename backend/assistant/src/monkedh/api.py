@@ -4,10 +4,12 @@ Provides endpoints for chat, conversation history, and health checks
 """
 import os
 import uuid
+import json
 import base64
 import asyncio
+import struct
 import logging
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -426,14 +428,706 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ============================================
-# Voice WebSocket
+# WebRTC Realtime Token Endpoint
 # ============================================
+
+import httpx
+
+# Azure GPT-Realtime configuration
+AZURE_REALTIME_API_KEY = os.getenv("AZURE_REALTIME_API_KEY")
+AZURE_REALTIME_API_BASE = os.getenv("AZURE_REALTIME_API_BASE")
+
+
+class WebRTCTokenRequest(BaseModel):
+    """Request model for WebRTC token endpoint"""
+    voice: str = Field(default="cedar", description="Voice to use")
+
+
+class WebRTCTokenResponse(BaseModel):
+    """Response model for WebRTC token endpoint"""
+    token: str = Field(..., description="Ephemeral token for WebRTC")
+    expires_at: Union[str, int] = Field(..., description="Token expiration time (timestamp or ISO string)")
+    webrtc_url: str = Field(..., description="WebRTC endpoint URL")
+    ice_servers: list = Field(default_factory=list, description="ICE servers for WebRTC")
+
+
+@app.post("/api/realtime/token", response_model=WebRTCTokenResponse, tags=["Voice"])
+async def get_realtime_token(request: WebRTCTokenRequest = WebRTCTokenRequest()):
+    """
+    Generate an ephemeral token for WebRTC connection to Azure OpenAI Realtime.
+    
+    Based on Azure docs: https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/realtime-webrtc
+    
+    Token URL: https://{resource}.openai.azure.com/openai/v1/realtime/client_secrets
+    WebRTC URL: https://{resource}.openai.azure.com/openai/v1/realtime/calls
+    """
+    if not AZURE_REALTIME_API_KEY or not AZURE_REALTIME_API_BASE:
+        raise HTTPException(
+            status_code=503,
+            detail="Azure Realtime API not configured"
+        )
+    
+    try:
+        # Parse the base URL to extract the resource name
+        # User format: https://youss-mhtmnf7z-swedencentral.cognitiveservices.azure.com/openai/realtime?...
+        # Docs format: https://{resource}.openai.azure.com/openai/v1/realtime/client_secrets
+        api_base = AZURE_REALTIME_API_BASE.replace("wss://", "https://").replace("ws://", "http://")
+        
+        # Extract hostname and resource name
+        hostname = api_base.split("//")[1].split("/")[0]
+        
+        # Extract the resource name (everything before the domain)
+        # For cognitiveservices: youss-mhtmnf7z-swedencentral.cognitiveservices.azure.com -> youss-mhtmnf7z-swedencentral
+        # For openai: myresource.openai.azure.com -> myresource
+        if "cognitiveservices.azure.com" in hostname:
+            azure_resource = hostname.replace(".cognitiveservices.azure.com", "")
+        elif "openai.azure.com" in hostname:
+            azure_resource = hostname.replace(".openai.azure.com", "")
+        else:
+            azure_resource = hostname.split(".")[0]
+        
+        # Per Azure docs, use openai.azure.com domain
+        # URL: https://{azure_resource}.openai.azure.com/openai/v1/realtime/client_secrets
+        # Removing api-version as it caused 400 errors, but keeping it for WebRTC as handshake usually needs it
+        token_url = f"https://{azure_resource}.openai.azure.com/openai/v1/realtime/client_secrets"
+        # Using 2024-10-01-preview for WebRTC handshake
+        webrtc_calls_url = f"https://{azure_resource}.openai.azure.com/openai/v1/realtime/calls?api-version=2024-10-01-preview"
+        
+        print(f"🔧 Original hostname: {hostname}")
+        print(f"🔧 Azure resource: {azure_resource}")
+        print(f"🔧 Token URL: {token_url}")
+        
+        # Session configuration per Azure docs
+        # Extract deployment name from the original URL if available
+        deployment_name = "gpt-realtime"
+        if "deployment=" in AZURE_REALTIME_API_BASE:
+            deployment_name = AZURE_REALTIME_API_BASE.split("deployment=")[1].split("&")[0]
+        
+        print(f"🔧 Deployment name: {deployment_name}")
+        
+        session_config = {
+            "session": {
+                "type": "realtime",
+                "model": deployment_name,
+                "instructions": """Tu es 'MonkEDH', l'assistant vocal du SAMU Tunisien (190).
+                
+                RÈGLE D'OR : ADAPTATION LINGUISTIQUE AUTOMATIQUE
+                - Si l'utilisateur parle FRANÇAIS -> Réponds en FRANÇAIS.
+                - Si l'utilisateur parle ARABE / TUNISIEN (Derja) -> Réponds en DERJA TUNISIEN.
+                - Ne demande jamais quelle langue utiliser. Adapte-toi instantanément.
+
+                MISSION :
+                1. Écoute l'utilisateur.
+                2. Consulte TOUJOURS 'query_medical_assistant' pour l'expertise médicale.
+                3. Reformule la réponse de l'expert dans la langue détectée.
+
+                TON ET STYLE :
+                - En Tunisien : Utilise le dialecte local (Derja) + termes médicaux français si nécessaire (ex: "Sbitar", "Ambulance", "Massage").
+                - En Français : Professionnel, clair, empathique.
+                - URGENCE : Ton FERME et DIRECT ("Appuyez maintenant !").
+                - RASSURANCE : Ton CALME et DOUX ("Respire, ça va aller").
+
+                RÈGLES TECHNIQUES :
+                - NE LIS PAS de Markdown, URLs ou chemins de fichiers.
+                - Dis "Je vous montre..." pour les images.
+                - Phrases courtes, optimisées pour la synthèse vocale.""",
+                "audio": {
+                    "output": {
+                        "voice": request.voice,
+                    },
+                },
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "query_medical_assistant",
+                        "description": "Consult the medical CrewAI expert system for emergency advice, diagnosis, or procedure.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The user's description of the emergency or medical question."
+                                }
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                ],
+                "tool_choice": "auto",
+            },
+        }
+        
+        # Request ephemeral token using api-key authentication
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                token_url,
+                headers={
+                    "api-key": AZURE_REALTIME_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json=session_config,
+                timeout=30.0
+            )
+            
+            print(f"🔧 Response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                print(f"❌ Token request failed: {response.status_code} - {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Failed to get ephemeral token: {response.text}"
+                )
+            
+            data = response.json()
+            print(f"🔧 Response data keys: {list(data.keys())}")
+        
+        print(f"🔧 WebRTC URL: {webrtc_calls_url}")
+        
+        # Extract token - per docs it's in "value" field
+        token = data.get("value", data.get("token", data.get("client_secret", {}).get("value", "")))
+        
+        return WebRTCTokenResponse(
+            token=token,
+            expires_at=data.get("expires_at", data.get("client_secret", {}).get("expires_at", "")),
+            webrtc_url=webrtc_calls_url,
+            ice_servers=data.get("ice_servers", [])
+        )
+        
+    except httpx.HTTPError as e:
+        print(f"❌ HTTP error getting token: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to communicate with Azure: {str(e)}"
+        )
+    except Exception as e:
+        print(f"❌ Error getting realtime token: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating token: {str(e)}"
+        )
+
+
+# ============================================
+# Voice WebSocket - GPT Realtime Integration (Legacy)
+# ============================================
+
+import re
+import websockets
+
+
+class GPTRealtimeProxy:
+    """
+    Proxy between browser WebSocket and Azure GPT-Realtime.
+    Handles bidirectional audio streaming with audio level tracking.
+    """
+    
+    def __init__(self, session_id: str, client_ws: WebSocket):
+        self.session_id = session_id
+        self.client_ws = client_ws
+        self.azure_stt_ws = None
+        self.azure_tts_ws = None
+        self.is_running = False
+        self.is_speaking = False
+        self.is_processing = False
+        self.current_audio_level = 0.0
+        self.has_audio_buffered = False
+        # Azure STT requires >= ~100ms of audio before committing the input buffer.
+        # For pcm16 mono @ 24kHz: 24000 samples/sec * 2 bytes = 48000 bytes/sec => 100ms ~= 4800 bytes.
+        self._stt_buffer_bytes = 0
+        self._min_commit_bytes = int(0.1 * 24000 * 2)
+        self._response_lock = asyncio.Lock()
+        self._current_turn_task: Optional[asyncio.Task] = None
+        self._turn_seq = 0
+        self.current_response_id: Optional[str] = None
+        # Barge-in control: when True, allow audio forwarding even while speaking
+        self.allow_audio_during_speech = False
+        # STT response tracking: prevent duplicate response.create calls
+        self.stt_response_in_progress = False
+
+    @staticmethod
+    def _estimate_b64_decoded_size(b64: str) -> int:
+        if not b64:
+            return 0
+        s = b64.strip()
+        padding = 2 if s.endswith("==") else 1 if s.endswith("=") else 0
+        # Base64: 4 chars -> 3 bytes (minus padding)
+        return max(0, (len(s) * 3) // 4 - padding)
+        
+    def _build_ws_url(self) -> str:
+        ws_url = AZURE_REALTIME_API_BASE.replace("https://", "wss://").replace("http://", "ws://")
+        return ws_url
+
+    def _clean_for_speech(self, text: str) -> str:
+        # Remove markdown + common artifacts that sound bad in TTS
+        # Strip box/table drawing characters often produced by formatted outputs
+        text = re.sub(r"[│┃║╎╏┆┇┊┋┌┐└┘├┤┬┴┼─━]+", " ", text)
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+        text = re.sub(r"\*(.+?)\*", r"\1", text)
+        text = re.sub(r"#+\s*", "", text)
+        text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)
+        text = re.sub(r"`(.+?)`", r"\1", text)
+        text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
+        text = re.sub(r"Image suggérée:.*?\.png", "", text)
+        text = re.sub(r"📷.*?\.png", "", text)
+        text = re.sub(r"\s*---+\s*", " ", text)
+        text = re.sub(r"\n\s*\n", "\n", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    async def connect_azure(self):
+        """Connect to Azure GPT-Realtime WebSockets (STT + TTS)."""
+        if not AZURE_REALTIME_API_KEY or not AZURE_REALTIME_API_BASE:
+            raise ValueError("Azure GPT-Realtime credentials not configured")
+
+        ws_url = self._build_ws_url()
+        headers = {"api-key": AZURE_REALTIME_API_KEY}
+
+        # STT connection: server VAD + Whisper transcription, no assistant generation
+        self.azure_stt_ws = await websockets.connect(
+            ws_url,
+            additional_headers=headers,
+            ping_interval=20,
+            ping_timeout=10
+        )
+
+        stt_session_config = {
+            "type": "session.update",
+            "session": {
+                "modalities": ["text"],
+                "instructions": "Tu es un service de transcription. Transcris uniquement l'audio utilisateur en français. Ne réponds jamais.",
+                "input_audio_format": "pcm16",
+                "input_audio_transcription": {
+                    "model": "whisper-1"
+                },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.45,
+                    "prefix_padding_ms": 200,
+                    "silence_duration_ms": 500
+                }
+            }
+        }
+
+        await self.azure_stt_ws.send(json.dumps(stt_session_config))
+
+        while True:
+            response = await self.azure_stt_ws.recv()
+            data = json.loads(response)
+            if data.get("type") in ["session.created", "session.updated"]:
+                print(f"✅ GPT-Realtime STT session established for {self.session_id}")
+                break
+
+        # TTS connection: generate audio for CrewAI responses
+        self.azure_tts_ws = await websockets.connect(
+            ws_url,
+            additional_headers=headers,
+            ping_interval=20,
+            ping_timeout=10
+        )
+
+        tts_session_config = {
+            "type": "session.update",
+            "session": {
+                "modalities": ["text", "audio"],
+                "instructions": (
+                    "Tu es la VOIX d'un assistant d'urgence (appel téléphonique) en français. "
+                    "Tu transformes le texte reçu en paroles naturelles, réalistes et actionnables. "
+                    "Objectif: aider vite, avec empathie et autorité quand c'est grave. "
+                    "\n\nSTYLE/ÉMOTION: "
+                    "- URGENCE VITALE: ton ferme et direct, rythme rapide, phrases très courtes, impératifs. "
+                    "- Sinon: ton calme, chaleureux, rassurant. "
+                    "Ajoute des micro-pauses avec la ponctuation (virgules, points) pour un rendu humain, sans exagérer. "
+                    "\n\nFORMAT: "
+                    "- 3 à 6 phrases maximum. Pas de listes, pas de numérotation, pas de titres. "
+                    "- Termine par UNE question courte pour confirmer l'état (ex: 'Il respire, là, oui ou non ?'). "
+                    "\n\nFILTRAGE STRICT: "
+                    "- Ne lis jamais d'URLs http/https, ni de chemins de fichiers/images (ex: emergency_image_db/..., images/..., C:\\..., /home/...). "
+                    "- Ne lis pas le markdown (#, **, -, 1.), ni tableaux/métadonnées. "
+                    "- Si le texte mentionne une image/chemin, remplace par: 'Je t'accompagne avec un guide visuel.' "
+                    "- Ignore les sections comme 'FORMAT', 'SOURCE', 'GUIDE VISUEL', séparateurs '---'. "
+                    "Ne dis jamais que tu filtres ou que tu réécris."
+                ),
+                "voice": "cedar",
+                "output_audio_format": "pcm16",
+                "turn_detection": None,
+            },
+        }
+
+        await self.azure_tts_ws.send(json.dumps(tts_session_config))
+
+        while True:
+            response = await self.azure_tts_ws.recv()
+            data = json.loads(response)
+            if data.get("type") in ["session.created", "session.updated"]:
+                print(f"✅ GPT-Realtime TTS session established for {self.session_id}")
+                break
+    
+    def calculate_audio_level(self, audio_data: bytes) -> float:
+        """Calculate RMS audio level from PCM16 data (0.0 to 1.0)."""
+        try:
+            import struct
+            samples = struct.unpack(f'{len(audio_data)//2}h', audio_data)
+            if not samples:
+                return 0.0
+            rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
+            # Normalize to 0-1 range (max PCM16 value is 32768)
+            normalized = min(1.0, rms / 8000)  # 8000 as practical speech max
+            return normalized
+        except Exception:
+            return 0.0
+    
+    async def _commit_and_request_transcription(self):
+        if not self.azure_stt_ws:
+            return
+        if not self.has_audio_buffered:
+            return
+        if self._stt_buffer_bytes < self._min_commit_bytes:
+            # Avoid committing tiny/empty buffers (Azure returns: "buffer too small").
+            try:
+                await self.azure_stt_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
+            except Exception:
+                pass
+            self.has_audio_buffered = False
+            self._stt_buffer_bytes = 0
+            return
+
+        try:
+            await self.azure_stt_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+            # Only create response if no STT response is already in progress
+            if not self.stt_response_in_progress:
+                self.stt_response_in_progress = True
+                await self.azure_stt_ws.send(json.dumps({"type": "response.create"}))
+            self.has_audio_buffered = False
+            self._stt_buffer_bytes = 0
+        except Exception as e:
+            print(f"⚠️ Failed to commit audio buffer: {e}")
+            # If Azure rejected the commit, reset the buffer to prevent repeated errors.
+            try:
+                await self.azure_stt_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
+            except Exception:
+                pass
+            self.has_audio_buffered = False
+            self._stt_buffer_bytes = 0
+
+    async def _speak_text(self, text: str):
+        if not self.azure_tts_ws:
+            return
+
+        speak_text = self._clean_for_speech(text)
+        if not speak_text:
+            return
+
+        self.is_speaking = True
+        self.allow_audio_during_speech = False  # Reset for new response
+        self.current_response_id = str(uuid.uuid4())
+        
+        # Clear any pending audio in STT buffer to prevent stale audio from triggering VAD
+        if self.azure_stt_ws:
+            try:
+                await self.azure_stt_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
+                self.has_audio_buffered = False
+                self._stt_buffer_bytes = 0
+                print(f"🟢 Cleared STT buffer before TTS (response_id: {self.current_response_id})")
+            except Exception:
+                pass
+        
+        await self.client_ws.send_json({
+            "type": "status", 
+            "state": "speaking",
+            "responseId": self.current_response_id
+        })
+
+        # Safety cap: cut off overly long TTS to keep emergency voice interactions snappy.
+        # pcm16 mono @ 24kHz => 48000 bytes/sec
+        max_tts_seconds = 14
+        max_tts_bytes = max_tts_seconds * 24000 * 2
+        spoken_bytes = 0
+
+        msg = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Transforme le texte suivant en un court message ORAL d'urgence (appel téléphonique). "
+                            "Garde uniquement l'essentiel, rends-le humain et réaliste, avec le ton adapté (grave => ferme, sinon rassurant). "
+                            "Pas de listes, pas de numéros, pas de titres. 3 à 6 phrases maximum. "
+                            "Ne lis jamais les URLs/chemins/markdown; si une image est mentionnée, dis: 'Je t'accompagne avec un guide visuel.' "
+                            "Termine par une question courte pour confirmer l'état. "
+                            f"Texte source: {speak_text}"
+                        ),
+                    }
+                ],
+            },
+        }
+        await self.azure_tts_ws.send(json.dumps(msg))
+        await self.azure_tts_ws.send(json.dumps({"type": "response.create"}))
+
+        try:
+            while self.is_running and self.azure_tts_ws:
+                # If we were interrupted, stop waiting for more audio.
+                if not self.is_speaking:
+                    break
+
+                try:
+                    response = await asyncio.wait_for(self.azure_tts_ws.recv(), timeout=0.25)
+                except asyncio.TimeoutError:
+                    continue
+
+                data = json.loads(response)
+                msg_type = data.get("type", "")
+
+                if msg_type == "response.audio.delta":
+                    audio_b64 = data.get("delta", "")
+                    if audio_b64:
+                        audio_data = base64.b64decode(audio_b64)
+                        spoken_bytes += len(audio_data)
+                        if spoken_bytes >= max_tts_bytes:
+                            # Cancel remaining audio generation.
+                            try:
+                                await self.azure_tts_ws.send(json.dumps({"type": "response.cancel"}))
+                            except Exception:
+                                pass
+                            break
+                        audio_level = self.calculate_audio_level(audio_data)
+                        await self.client_ws.send_json({
+                            "type": "audio",
+                            "data": audio_b64,
+                            "level": audio_level,
+                            "sampleRate": 24000,
+                            "responseId": self.current_response_id
+                        })
+                elif msg_type == "response.done":
+                    break
+                elif msg_type == "error":
+                    error = data.get("error", {})
+                    await self.client_ws.send_json({
+                        "type": "error",
+                        "message": error.get("message", "Unknown error"),
+                    })
+                    break
+        finally:
+            self.is_speaking = False
+
+    async def interrupt(self):
+        """Immediately stop any ongoing TTS playback/generation."""
+        print(f"🔴 INTERRUPT called! is_speaking was: {self.is_speaking}, response_id: {self.current_response_id}")
+        self.is_speaking = False
+        self.allow_audio_during_speech = True  # Allow audio through for the new turn
+        # Ask Azure to cancel current response generation (if any)
+        if self.azure_tts_ws:
+            try:
+                await self.azure_tts_ws.send(json.dumps({"type": "response.cancel"}))
+            except Exception:
+                pass
+        # Tell the client to stop local playback right away
+        try:
+            await self.client_ws.send_json({"type": "status", "state": "listening"})
+            await self.client_ws.send_json({
+                "type": "control", 
+                "action": "stop_playback",
+                "responseId": self.current_response_id
+            })
+        except Exception:
+            pass
+
+    async def _handle_user_text_with_crew(self, transcript: str):
+        async with self._response_lock:
+            turn_seq = self._turn_seq
+            self.is_processing = True
+            try:
+                await self.client_ws.send_json({"type": "status", "state": "processing"})
+
+                channel_id = f"voice_{self.session_id}"
+                user_id = self.session_id
+
+                response_text = await asyncio.to_thread(
+                    process_question,
+                    channel_id=channel_id,
+                    user_id=user_id,
+                    username="Voice User",
+                    question=transcript,
+                )
+
+                # If a newer turn has started, do not speak the older response.
+                if self._turn_seq != turn_seq:
+                    return
+
+                clean_response = self._clean_for_speech(response_text)
+                await self.client_ws.send_json({
+                    "type": "transcript",
+                    "text": clean_response,
+                    "speaker": "assistant",
+                })
+
+                await self._speak_text(clean_response)
+            except asyncio.CancelledError:
+                # Newer user turn arrived; drop this one quietly.
+                return
+            except Exception as e:
+                print(f"❌ CrewAI/TTS pipeline error: {e}")
+                await self.client_ws.send_json({
+                    "type": "error",
+                    "message": str(e),
+                })
+            finally:
+                self.is_processing = False
+                self.is_speaking = False
+                await self.client_ws.send_json({"type": "status", "state": "listening"})
+
+    async def handle_azure_messages(self):
+        """Process messages from Azure STT session and forward transcripts/status to client."""
+        
+        try:
+            while self.is_running and self.azure_stt_ws:
+                try:
+                    response = await asyncio.wait_for(self.azure_stt_ws.recv(), timeout=0.1)
+                    data = json.loads(response)
+                    msg_type = data.get("type", "")
+                    
+                    # User's speech transcription completed
+                    if msg_type == "conversation.item.input_audio_transcription.completed":
+                        transcript = data.get("transcript", "")
+                        if transcript:
+                            await self.client_ws.send_json({
+                                "type": "transcript",
+                                "text": transcript,
+                                "speaker": "user"
+                            })
+
+                            # Route transcript through CrewAI and then speak it back.
+                            # Cancel any in-flight turn so the latest user request is handled ASAP.
+                            self._turn_seq += 1
+                            turn_seq = self._turn_seq
+
+                            if self._current_turn_task and not self._current_turn_task.done():
+                                try:
+                                    self._current_turn_task.cancel()
+                                except Exception:
+                                    pass
+
+                            self._current_turn_task = asyncio.create_task(self._handle_user_text_with_crew(transcript))
+                    
+                    # Speech started detection
+                    elif msg_type == "input_audio_buffer.speech_started":
+                        # COMPLETELY IGNORE speech events while TTS is playing
+                        # to prevent any false barge-in from echo/mic feedback
+                        if self.is_speaking:
+                            print(f"� Ignoring VAD speech_started - TTS is playing")
+                            continue  # Skip entirely, don't even send status
+                        await self.client_ws.send_json({
+                            "type": "status",
+                            "state": "user_speaking"
+                        })
+                    
+                    # Speech stopped detection
+                    elif msg_type == "input_audio_buffer.speech_stopped":
+                        # COMPLETELY IGNORE speech events while TTS is playing
+                        if self.is_speaking:
+                            print(f"🟡 Ignoring VAD speech_stopped - TTS is playing")
+                            continue  # Skip entirely
+                        await self.client_ws.send_json({
+                            "type": "status",
+                            "state": "processing"
+                        })
+                        await self._commit_and_request_transcription()
+                    
+                    # STT response tracking - clear flag when response is done
+                    elif msg_type == "response.done":
+                        self.stt_response_in_progress = False
+                    
+                    # Ignore other response events from STT session
+                    elif msg_type.startswith("response."):
+                        continue
+                    
+                    # Error handling - suppress non-critical Azure errors
+                    elif msg_type == "error":
+                        error = data.get("error", {})
+                        error_msg = error.get("message", "Unknown error")
+                        # Don't flood the client with Azure internal errors
+                        if "buffer too small" in error_msg or "active response in progress" in error_msg:
+                            print(f"⚠️ Azure non-critical error (suppressed): {error_msg}")
+                            continue
+                        await self.client_ws.send_json({
+                            "type": "error",
+                            "message": error_msg
+                        })
+                    
+                except asyncio.TimeoutError:
+                    continue
+                except websockets.exceptions.ConnectionClosed:
+                    print(f"⚠️ Azure connection closed for {self.session_id}")
+                    break
+                    
+        except Exception as e:
+            print(f"❌ Azure message handler error: {e}")
+            await self.client_ws.send_json({
+                "type": "error",
+                "message": str(e)
+            })
+    
+    async def forward_audio_to_azure(self, audio_b64: str):
+        """Forward audio chunk from client to Azure."""
+        # Do not forward audio while assistant is speaking to prevent
+        # the assistant's own voice from triggering false VAD interrupts.
+        # Exception: if barge-in was triggered, allow audio through.
+        if self.is_speaking and not self.allow_audio_during_speech:
+            return
+        if self.azure_stt_ws:
+            msg = {
+                "type": "input_audio_buffer.append",
+                "audio": audio_b64
+            }
+            await self.azure_stt_ws.send(json.dumps(msg))
+            self._stt_buffer_bytes += self._estimate_b64_decoded_size(audio_b64)
+            self.has_audio_buffered = self._stt_buffer_bytes > 0
+    
+    async def send_text_to_azure(self, text: str):
+        """Handle a text input from client (routes through CrewAI then speaks)."""
+        if text:
+            # Same prioritization as STT: latest user text wins.
+            self._turn_seq += 1
+            if self._current_turn_task and not self._current_turn_task.done():
+                try:
+                    self._current_turn_task.cancel()
+                except Exception:
+                    pass
+            self._current_turn_task = asyncio.create_task(self._handle_user_text_with_crew(text))
+    
+    async def start(self):
+        """Start the proxy connection."""
+        self.is_running = True
+        await self.connect_azure()
+        
+        # Start Azure message handler task
+        asyncio.create_task(self.handle_azure_messages())
+        
+        await self.client_ws.send_json({
+            "type": "status",
+            "state": "connected",
+            "message": "Connexion établie avec l'assistant vocal IA"
+        })
+    
+    async def stop(self):
+        """Stop the proxy connection."""
+        self.is_running = False
+        if self.azure_stt_ws:
+            await self.azure_stt_ws.close()
+            self.azure_stt_ws = None
+        if self.azure_tts_ws:
+            await self.azure_tts_ws.close()
+            self.azure_tts_ws = None
+
 
 class VoiceConnectionManager:
     """Manages WebSocket connections for voice calls"""
     
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
+        self.active_proxies: dict[str, GPTRealtimeProxy] = {}
     
     async def connect(self, websocket: WebSocket, session_id: str):
         await websocket.accept()
@@ -444,6 +1138,8 @@ class VoiceConnectionManager:
         if session_id in self.active_connections:
             del self.active_connections[session_id]
             print(f"🔌 Voice connection closed: {session_id}")
+        if session_id in self.active_proxies:
+            del self.active_proxies[session_id]
     
     async def send_message(self, session_id: str, message: dict):
         if session_id in self.active_connections:
@@ -456,115 +1152,137 @@ voice_manager = VoiceConnectionManager()
 @app.websocket("/api/voice/{session_id}")
 async def voice_websocket(websocket: WebSocket, session_id: str):
     """
-    WebSocket endpoint for voice communication.
+    WebSocket endpoint for real-time voice communication via Azure GPT-Realtime.
     
     Protocol:
-    - Client sends: {"type": "audio", "data": "<base64_audio>"} for audio chunks
+    - Client sends: {"type": "audio", "data": "<base64_pcm16_24khz>"} for audio chunks
     - Client sends: {"type": "text", "message": "<text>"} for text input
     - Client sends: {"type": "end"} to end session
-    - Server sends: {"type": "transcript", "text": "<transcribed_text>"} for user speech
-    - Server sends: {"type": "response", "text": "<ai_response>", "audio": "<base64_audio>"}
-    - Server sends: {"type": "status", "state": "listening"|"processing"|"speaking"}
+    - Client sends: {"type": "interrupt"} to stop assistant speech immediately
+    
+    - Server sends: {"type": "audio", "data": "<base64>", "level": 0.0-1.0, "sampleRate": 24000}
+    - Server sends: {"type": "transcript", "text": "<text>", "speaker": "user"|"assistant"}
+    - Server sends: {"type": "transcript_delta", "text": "<delta>", "speaker": "assistant"}
+    - Server sends: {"type": "status", "state": "connected"|"listening"|"user_speaking"|"processing"|"speaking"|"ended"}
     - Server sends: {"type": "error", "message": "<error_message>"}
+    - Server sends: {"type": "control", "action": "stop_playback"}
     """
     await voice_manager.connect(websocket, session_id)
     
-    channel_id = f"voice_{session_id}"
-    user_id = session_id
+    proxy = None
     
     try:
-        await websocket.send_json({
-            "type": "status",
-            "state": "connected",
-            "message": "Connexion établie. Vous pouvez parler ou écrire."
-        })
-        
-        while True:
-            try:
-                data = await websocket.receive_json()
-                msg_type = data.get("type", "")
-                
-                if msg_type == "end":
-                    await websocket.send_json({
-                        "type": "status",
-                        "state": "ended",
-                        "message": "Session terminée"
-                    })
+        # Check if Azure credentials are available
+        if AZURE_REALTIME_API_KEY and AZURE_REALTIME_API_BASE:
+            # Use GPT-Realtime proxy
+            proxy = GPTRealtimeProxy(session_id, websocket)
+            voice_manager.active_proxies[session_id] = proxy
+            await proxy.start()
+            
+            # Handle client messages
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    msg_type = data.get("type", "")
+                    
+                    if msg_type == "end":
+                        await websocket.send_json({
+                            "type": "status",
+                            "state": "ended",
+                            "message": "Session terminée"
+                        })
+                        break
+                    
+                    elif msg_type == "audio":
+                        audio_data = data.get("data", "")
+                        if audio_data:
+                            await proxy.forward_audio_to_azure(audio_data)
+                    
+                    elif msg_type == "text":
+                        message = data.get("message", "").strip()
+                        if message:
+                            await proxy.send_text_to_azure(message)
+
+                    elif msg_type == "interrupt":
+                        if proxy:
+                            await proxy.interrupt()
+                    
+                except WebSocketDisconnect:
                     break
-                
-                elif msg_type == "text":
-                    # Handle text message - process through chat AI
-                    message = data.get("message", "").strip()
-                    if not message:
-                        continue
-                    
-                    await websocket.send_json({
-                        "type": "status",
-                        "state": "processing"
-                    })
-                    
-                    # Process through CrewAI
-                    response = await asyncio.to_thread(
-                        process_question,
-                        channel_id=channel_id,
-                        user_id=user_id,
-                        username="Voice User",
-                        question=message
-                    )
-                    
-                    await websocket.send_json({
-                        "type": "response",
-                        "text": response,
-                        "audio": None  # Text-only response for now
-                    })
-                    
-                    await websocket.send_json({
-                        "type": "status",
-                        "state": "listening"
-                    })
-                
-                elif msg_type == "audio":
-                    # Handle audio chunk - for future Azure Realtime integration
-                    audio_data = data.get("data", "")
-                    
-                    # For now, acknowledge receipt - full audio processing requires
-                    # Azure GPT-Realtime integration which needs browser-compatible audio
-                    await websocket.send_json({
-                        "type": "status",
-                        "state": "processing",
-                        "message": "Audio reçu, traitement en cours..."
-                    })
-                    
-                    # TODO: Integrate with Azure GPT-Realtime for audio processing
-                    # For now, we support text-based voice interactions
-                    await websocket.send_json({
-                        "type": "info",
-                        "message": "Pour l'instant, veuillez utiliser la reconnaissance vocale de votre navigateur et envoyer le texte."
-                    })
-                    
-                    await websocket.send_json({
-                        "type": "status",
-                        "state": "listening"
-                    })
-                
-                else:
+                except Exception as e:
+                    print(f"❌ Voice WebSocket error: {e}")
                     await websocket.send_json({
                         "type": "error",
-                        "message": f"Type de message non reconnu: {msg_type}"
+                        "message": str(e)
                     })
+        else:
+            # Fallback: Text-only mode with browser TTS
+            await websocket.send_json({
+                "type": "status",
+                "state": "connected",
+                "mode": "text_only",
+                "message": "Mode texte uniquement (GPT-Realtime non configuré)"
+            })
+            
+            channel_id = f"voice_{session_id}"
+            user_id = session_id
+            
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    msg_type = data.get("type", "")
                     
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                print(f"❌ Voice WebSocket error: {e}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": str(e)
-                })
+                    if msg_type == "end":
+                        await websocket.send_json({
+                            "type": "status",
+                            "state": "ended"
+                        })
+                        break
+                    
+                    elif msg_type == "text":
+                        message = data.get("message", "").strip()
+                        if not message:
+                            continue
+                        
+                        await websocket.send_json({
+                            "type": "status",
+                            "state": "processing"
+                        })
+                        
+                        response = await asyncio.to_thread(
+                            process_question,
+                            channel_id=channel_id,
+                            user_id=user_id,
+                            username="Voice User",
+                            question=message
+                        )
+                        
+                        await websocket.send_json({
+                            "type": "response",
+                            "text": response
+                        })
+                        
+                        await websocket.send_json({
+                            "type": "status",
+                            "state": "listening"
+                        })
+                    
+                except WebSocketDisconnect:
+                    break
+                except Exception as e:
+                    print(f"❌ Voice WebSocket error: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": str(e)
+                    })
                 
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        print(f"❌ Voice connection error: {e}")
     finally:
+        if proxy:
+            await proxy.stop()
         voice_manager.disconnect(session_id)
 
 

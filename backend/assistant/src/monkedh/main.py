@@ -55,16 +55,9 @@ def run_text_mode():
     """Run the chatbot in text mode (original behavior)."""
     print("Assistant RCP virtuel - saisissez vos questions (tapez 'q' pour quitter).")
     crew_factory = Monkedh()
-    
-    # Generate unique session ID for this execution
-    session_id = str(uuid.uuid4())
-    channel_id = f"text_session_{session_id}"
+    channel_id = "default_channel"
     user_id = str(uuid.uuid4())
     username = "Temoin"
-    
-    # Clear any previous session memory (fresh start)
-    redis_memory.clear_session_memory(channel_id)
-    print(f"🆕 Nouvelle session démarrée: {session_id[:8]}...")
 
     while True:
         try:
@@ -118,16 +111,9 @@ def run_voice_mode(voice_type: str = "shimmer"):
     # Initialize CrewAI
     print("🔧 Initialisation CrewAI...")
     crew_factory = Monkedh()
-    
-    # Generate unique session ID for this execution
-    session_id = str(uuid.uuid4())
-    channel_id = f"voice_session_{session_id}"
+    channel_id = "voice_channel"
     user_id = str(uuid.uuid4())
     username = "Temoin_Vocal"
-    
-    # Clear any previous session memory (fresh start)
-    redis_memory.clear_session_memory(channel_id)
-    print(f"🆕 Nouvelle session vocale démarrée: {session_id[:8]}...")
     
     def clean_for_speech(text: str) -> str:
         """Clean text for TTS."""

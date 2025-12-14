@@ -13,27 +13,14 @@ from monkedh.tools.rag import create_first_aid_search_tool
 from monkedh.tools.rag.config import QDRANT_URL, QDRANT_API_KEY
 from .tools.image_suggestion import search_emergency_image
 
-
-# Load .env from the assistant directory (where pyproject.toml is)
-# crew.py -> monkedh -> src -> assistant (3 parents)
+# Load environment
 env_path = Path(__file__).parent.parent.parent / ".env"
 dotenv.load_dotenv(env_path)
 
-# Disable SSL warnings for TokenFactory
+# Disable SSL warnings
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-embedder_config = {
-            "provider": "openai",
-            "api_type": "azure",
-            "api_key": os.getenv("AZURE_API_KEY"),
-            "api_base": os.getenv('AZURE_API_BASE'),
-            "api_version": "2024-12-01-preview",
-            "deployment_id": "text-embedding-3-small",
-            "model_name": "text-embedding-3-small",
-            "dimensions": 1536
-        }
-
+os.environ["OTEL_SDK_DISABLED"] = "true"
 # Azure OpenAI LLM
 llm = LLM(
     model=os.getenv("model"),
@@ -43,67 +30,57 @@ llm = LLM(
     stream=False,
 )
 
-# TokenFactory LLM (Llama-3.1-70B) - without http_client
-llm_tokenfactory = LLM(
-    model="openai/hosted_vllm/Llama-3.1-70B-Instruct",
-    api_key="sk-3b38b0ddab444c4d9b3ff5e14ef9654d",
-    base_url="https://tokenfactory.esprit.tn/api",
-    temperature=0.1,
-    top_p=0.9
-)
-
 @CrewBase
 class Monkedh():
-    """Monkedh crew"""
+    """Monkedh crew - Optimisé pour rapidité"""
 
     agents: List[BaseAgent]
     tasks: List[Task]
     
+    # Outils configurés pour performance
     serper_tool = SerperDevTool(
-        country="fr",
+        country="tn",  # Tunisie directement
         locale="fr",
-        n_results=2,
+        n_results=2,  # Limité à 2 résultats max
     )
     webscraper_tool = ScrapeWebsiteTool()
     rag_tool = create_first_aid_search_tool(
-    qdrant_url=QDRANT_URL,
-    qdrant_api_key=QDRANT_API_KEY
+        qdrant_url=QDRANT_URL,
+        qdrant_api_key=QDRANT_API_KEY
     )
     image_tool = search_emergency_image
     
-    # ============================================
-    # AGENT UNIQUE : ASSISTANT MÉDICAL COMPLET
-    # ============================================
     @agent
     def assistant_urgence_medical(self) -> Agent:
         """
-        Agent unique qui gère tout : détection d'urgence, guidage 
-        et images illustratives.
-        Réduit la latence en éliminant la délégation inter-agents.
+        Agent unique optimisé pour rapidité.
+        Réduit latence via :
+        - Prompts courts
+        - max_iter=3 (permet retry mais limite boucles)
+        - Cache désactivé (force fraîcheur des données)
+        - Verbose=False (réduit overhead logging)
         """
         return Agent(
             config=self.agents_config['assistant_urgence_medical'],
             tools=[
-                self.image_tool,         # Images premiers secours (PRIORITAIRE)
-                self.rag_tool,           # Protocoles médicaux
-                self.serper_tool,        # Recherche web (pharmacies, hôpitaux)
-                self.webscraper_tool,    # Scraping de pages
+                self.image_tool,       # PRIORITAIRE (toujours)
+                self.rag_tool,         # PRIORITAIRE (toujours)
+                self.serper_tool,      # CONDITIONNEL (selon urgence)
+                self.webscraper_tool,  # CONDITIONNEL (selon urgence)
             ],
             llm=llm,
-            max_iter=5,              # Increased to allow retry on tool failures
-            cache=False,             # Désactivé pour forcer l'appel des outils
-            verbose=True,
-            max_retry_limit=3,       # Allow retries on errors
+            max_iter=1,              # Permet retry mais évite boucles infinies
+            cache=False,             # Force appel outils (pas de cache périmé)
+            verbose=False,           # Réduit overhead
+            max_retry_limit=0,       # Max 2 retries par outil
+            allow_delegation=False,  # Pas de délégation inter-agents
         )
 
-    # ============================================
-    # TÂCHE UNIQUE : ASSISTANCE MÉDICALE COMPLÈTE
-    # ============================================
     @task
     def assistance_medicale_complete(self) -> Task:
         """
-        Tâche unique qui combine détection, guidage et notification.
-        Output en Markdown pour un affichage plus lisible.
+        Tâche unique optimisée.
+        Output Markdown pour affichage rapide.
         """
         return Task(
             config=self.tasks_config['assistance_medicale_complete'],
@@ -112,23 +89,33 @@ class Monkedh():
 
     @crew
     def crew(self) -> Crew:
-        """Creates the Monkedh crew"""
+        """
+        Crew optimisé pour urgences médicales.
+        
+        Optimisations :
+        - Short-term memory only (Redis rapide)
+        - Process sequential (pas de parallélisation complexe)
+        - Cache désactivé (fraîcheur données)
+        - Verbose limité
+        """
         redis_storage = RedisStorage(
             host=os.getenv("REDIS_HOST", "redis-13350.c339.eu-west-3-1.ec2.redns.redis-cloud.com"),
             port=int(os.getenv("REDIS_PORT", 13350)),
             db=int(os.getenv("REDIS_DB", 0)),
-            password=os.getenv("REDIS_PASSWORD","YoLErdUztvwgDQvhAr1Fgbp0NUdekrRm"),
+            password=os.getenv("REDIS_PASSWORD", "YoLErdUztvwgDQvhAr1Fgbp0NUdekrRm"),
             namespace="monkedh",
         )
         
+        # Mémoire court-terme uniquement (plus rapide)
         short_term_memory = ShortTermMemory(storage=redis_storage)
+        
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
             short_term_memory=short_term_memory,
-            function_calling_llm=llm,
-            verbose=True,
-            output_log_file="monkedh_crew.log",
-            cache=True,
+            verbose=True,  # Désactiver logs verbeux
+            tracing=False,
+            cache=False,    # Pas de cache crew-level
+            memory=False,   # Désactiver long-term memory (inutile pour urgences)
         )

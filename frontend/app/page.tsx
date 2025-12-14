@@ -20,32 +20,54 @@ import Link from "next/link"
 import Image from "next/image"
 import { useState, useEffect } from "react"
 
+function pseudoRandom01(seed: number) {
+  let t = seed + 0x6d2b79f5
+  t = Math.imul(t ^ (t >>> 15), t | 1)
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
+const FLOATING_PARTICLES = Array.from({ length: 20 }, (_, i) => {
+  const size = 2 + pseudoRandom01(i * 17 + 1) * 4
+  const alpha = 0.05 + pseudoRandom01(i * 17 + 2) * 0.15
+  return {
+    size,
+    alpha,
+    x0: pseudoRandom01(i * 17 + 3) * 100,
+    y0: pseudoRandom01(i * 17 + 4) * 100,
+    x1: pseudoRandom01(i * 17 + 5) * 100,
+    y1: pseudoRandom01(i * 17 + 6) * 100,
+    duration: 15 + pseudoRandom01(i * 17 + 7) * 10,
+    delay: pseudoRandom01(i * 17 + 8) * 5,
+  }
+})
+
 // Animated background particles
 function FloatingParticles() {
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-      {Array.from({ length: 20 }).map((_, i) => (
+      {FLOATING_PARTICLES.map((p, i) => (
         <motion.div
           key={i}
           className="absolute rounded-full"
           style={{
-            width: Math.random() * 4 + 2,
-            height: Math.random() * 4 + 2,
-            background: `rgba(8, 145, 178, ${Math.random() * 0.15 + 0.05})`,
+            width: p.size,
+            height: p.size,
+            background: `rgba(8, 145, 178, ${p.alpha})`,
           }}
           initial={{
-            x: `${Math.random() * 100}%`,
-            y: `${Math.random() * 100}%`,
+            x: `${p.x0}%`,
+            y: `${p.y0}%`,
           }}
           animate={{
-            y: [null, `${Math.random() * 100}%`],
-            x: [null, `${Math.random() * 100}%`],
+            y: [null, `${p.y1}%`],
+            x: [null, `${p.x1}%`],
             opacity: [0, 0.6, 0],
           }}
           transition={{
-            duration: 15 + Math.random() * 10,
+            duration: p.duration,
             repeat: Infinity,
-            delay: Math.random() * 5,
+            delay: p.delay,
             ease: "easeInOut",
           }}
         />
@@ -221,10 +243,8 @@ const stats = [
 
 export default function HomePage() {
   const [currentTime, setCurrentTime] = useState("")
-  const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
-    setIsLoaded(true)
     const updateTime = () => {
       setCurrentTime(
         new Date().toLocaleTimeString("fr-FR", {
@@ -263,9 +283,11 @@ export default function HomePage() {
             >
               {/* Container avec clip pour masquer le watermark en haut */}
               <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 overflow-hidden">
-                <img
+                <Image
                   src="/animations/logo_monkedh.gif"
                   alt="Monkedh Logo"
+                  fill
+                  unoptimized
                   className="absolute top-[-10%] left-0 w-full h-[120%] object-cover drop-shadow-lg"
                 />
               </div>
@@ -285,7 +307,7 @@ export default function HomePage() {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.4 }}
               >
-                🇹🇳 Secourisme d'urgence Tunisie
+                🇹🇳 Secourisme d&apos;urgence Tunisie
               </motion.p>
             </div>
           </motion.div>
@@ -364,7 +386,7 @@ export default function HomePage() {
         <motion.section
           variants={containerVariants}
           initial="hidden"
-          animate={isLoaded ? "visible" : "hidden"}
+          animate="visible"
           className="grid grid-cols-3 gap-3 sm:gap-4"
         >
           {stats.map((stat, index) => (
@@ -389,7 +411,7 @@ export default function HomePage() {
         <motion.section 
           variants={containerVariants} 
           initial="hidden" 
-          animate={isLoaded ? "visible" : "hidden"}
+          animate="visible"
           className="space-y-3 sm:space-y-4"
         >
           <motion.div variants={itemVariants} className="flex items-center gap-2 px-1">
@@ -476,7 +498,7 @@ export default function HomePage() {
         <motion.section 
           variants={containerVariants} 
           initial="hidden" 
-          animate={isLoaded ? "visible" : "hidden"}
+          animate="visible"
           className="space-y-3 sm:space-y-4"
         >
           <motion.div variants={itemVariants} className="flex items-center gap-2 px-1">
@@ -537,7 +559,7 @@ export default function HomePage() {
                     Restez calme, nous sommes là
                   </h3>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    En situation d'urgence, notre assistant IA vous guide étape par étape avec des instructions claires et précises. 
+                    En situation d&apos;urgence, notre assistant IA vous guide étape par étape avec des instructions claires et précises. 
                     <span className="font-semibold text-[#0891B2]"> Chaque seconde compte.</span>
                   </p>
                 </div>

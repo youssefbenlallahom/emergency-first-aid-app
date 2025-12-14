@@ -25,6 +25,13 @@ import { useState, useRef, useEffect, useCallback } from "react"
 type CPRState = "idle" | "ready" | "active" | "paused"
 type FeedbackType = "correct" | "incorrect" | "neutral"
 
+function pseudoRandom01(seed: number) {
+  let t = seed + 0x6d2b79f5
+  t = Math.imul(t ^ (t >>> 15), t | 1)
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
 interface CompressionFeedback {
   depth: FeedbackType
   rate: FeedbackType
@@ -385,17 +392,17 @@ export default function CPRCameraPage() {
                   key={i}
                   className="absolute w-2 h-2 rounded-full bg-cyan-500/10"
                   initial={{
-                    x: `${Math.random() * 100}%`,
-                    y: `${Math.random() * 100}%`,
+                    x: `${pseudoRandom01(i * 11 + 1) * 100}%`,
+                    y: `${pseudoRandom01(i * 11 + 2) * 100}%`,
                   }}
                   animate={{
-                    y: [null, `${Math.random() * 100}%`],
+                    y: [null, `${pseudoRandom01(i * 11 + 3) * 100}%`],
                     opacity: [0, 0.5, 0],
                   }}
                   transition={{
-                    duration: 8 + Math.random() * 4,
+                    duration: 8 + pseudoRandom01(i * 11 + 4) * 4,
                     repeat: Infinity,
-                    delay: Math.random() * 3,
+                    delay: pseudoRandom01(i * 11 + 5) * 3,
                   }}
                 />
               ))}
@@ -444,7 +451,7 @@ export default function CPRCameraPage() {
                   <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
                   <div>
                     <p className="text-red-300 font-medium text-sm">Accès caméra refusé</p>
-                    <p className="text-red-300/70 text-xs mt-1">Veuillez autoriser l'accès dans les paramètres de votre navigateur.</p>
+                    <p className="text-red-300/70 text-xs mt-1">Veuillez autoriser l&apos;accès dans les paramètres de votre navigateur.</p>
                   </div>
                 </div>
               </motion.div>
