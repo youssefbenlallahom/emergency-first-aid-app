@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport d'Analyse Vidéo - Monkedh</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .header .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+        
+        .header .org {
+            margin-top: 15px;
+            font-size: 1rem;
+            opacity: 0.9;
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+            padding-top: 15px;
+            font-weight: 500;
+        }
+        
+        .metadata {
+            background: #f8f9fa;
+            padding: 20px 40px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        
+        .metadata-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 20px;
+        }
+        
+        .metadata-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 12px;
+            font-size: 1.2rem;
+        }
+        
+        .metadata-content {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .metadata-label {
+            font-size: 0.85rem;
+            color: #666;
+            font-weight: 600;
+        }
+        
+        .metadata-value {
+            font-size: 1.1rem;
+            color: #333;
+            font-weight: 700;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        h1 {
+            color: #1e3c72;
+            font-size: 2.2rem;
+            margin-bottom: 20px;
+        }
+        
+        h2 {
+            color: #1e3c72;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+            position: relative;
+        }
+        
+        h2::before {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            width: 60px;
+            height: 3px;
+            background: #764ba2;
+        }
+        
+        h3 {
+            color: #2a5298;
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+            padding-left: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        
+        ul {
+            margin: 15px 0;
+            padding-left: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+            padding-left: 10px;
+            position: relative;
+            list-style: none;
+        }
+        
+        li::before {
+            content: '▸';
+            color: #667eea;
+            font-weight: bold;
+            position: absolute;
+            left: -15px;
+        }
+        
+        .alert {
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 5px solid;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .alert-danger {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+        
+        .alert-warning {
+            border-color: #ffc107;
+            background: #fffbf0;
+        }
+        
+        .alert-info {
+            border-color: #17a2b8;
+            background: #f0f9ff;
+        }
+        
+        .alert-success {
+            border-color: #28a745;
+            background: #f0fff4;
+        }
+        
+        .emergency-numbers {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        .emergency-numbers h4 {
+            font-size: 1.4rem;
+            margin-bottom: 15px;
+        }
+        
+        .emergency-numbers .numbers {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .emergency-numbers .number-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px 25px;
+            border-radius: 8px;
+        }
+        
+        .emergency-numbers .number {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        
+        .emergency-numbers .label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .footer {
+            background: #1e3c72;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .footer p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        
+        strong {
+            color: #1e3c72;
+        }
+        
+        em {
+            color: #666;
+            font-style: italic;
+        }
+        
+        hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            margin: 30px 0;
+        }
+        
+        /* RTL support for Arabic */
+        html[lang="ar"] {
+            direction: rtl;
+        }
+        
+        html[lang="ar"] h3 {
+            padding-left: 0;
+            padding-right: 15px;
+            border-left: none;
+            border-right: 4px solid #667eea;
+        }
+        
+        html[lang="ar"] li::before {
+            left: auto;
+            right: -15px;
+            content: '◂';
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚑 Rapport d'Analyse d'Incident Vidéo</h1>
+            <p class="subtitle">Analyse vidéo complète par Intelligence Artificielle</p>
+            <p class="org">🏛️ Ministère de la Santé - République Tunisienne</p>
+        </div>
+        
+        <div class="metadata">
+            <div class="metadata-item">
+                <div class="metadata-icon">📅</div>
+                <div class="metadata-content">
+                    <span class="metadata-label">Date de génération</span>
+                    <span class="metadata-value">13/12/2025 19:17</span>
+                </div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-icon">🖼️</div>
+                <div class="metadata-content">
+                    <span class="metadata-label">Frames analysées</span>
+                    <span class="metadata-value">8</span>
+                </div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-icon">🔍</div>
+                <div class="metadata-content">
+                    <span class="metadata-label">Statut</span>
+                    <span class="metadata-value">Complet</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <p><em>Généré le: 2025-12-13 19:17:40</em><br />
+<em>Frames analysées: 8</em><br />
+<em>Ministère de la Santé - République Tunisienne</em></p>
+<hr />
+<h1>Rapport d'Analyse d'Incident Vidéo</h1>
+<h2>Résumé Exécutif</h2>
+<p>Un incident grave s'est produit, impliquant plusieurs personnes, avec des blessures et une situation de détresse. Les détails sont présentés ci-dessous.</p>
+<h2>Observations Détaillées</h2>
+<h3>Personnes et Actions</h3>
+<ul>
+<li>Nombre de personnes observées : 5</li>
+<li>Leurs positions et mouvements : Les personnes sont dispersées dans la zone, certaines sont immobiles au sol, tandis que d'autres se déplacent pour leur porter assistance.</li>
+<li>Actions clés entreprises : Appel aux services d'urgence, assistance fournie aux blessés, tentative de réanimation.</li>
+</ul>
+<h3>Préoccupations de Sécurité</h3>
+<ul>
+<li>Personne(s) en détresse ou blessée(s) : 3 personnes sont clairement blessées, dont 2 au sol et 1 debout mais en difficulté. Une personne est inconsciente.</li>
+<li>Présence de fumée, feu ou indicateurs d'accident : Aucun signe de fumée ou de feu, mais des débris sont visibles.</li>
+<li>Autres dangers ou situations dangereuses : La zone semble instable, avec des objets qui pourraient tomber.</li>
+</ul>
+<h3>Indicateurs d'Urgence Médicale</h3>
+<ul>
+<li>Signes d'arrêt cardiaque : Une personne inconsciente au sol.</li>
+<li>Étouffement : Aucun signe visible.</li>
+<li>Hémorragies : Une personne présente des blessures ouvertes.</li>
+<li>Brûlures : Aucune brûlure visible.</li>
+<li>Inconscience : Une personne est inconsciente.</li>
+<li>Autres urgences médicales : Une personne présente des signes de douleur intense.</li>
+</ul>
+<h3>Chronologie des Événements</h3>
+<ol>
+<li>Début de la vidéo : Les personnes sont déjà dispersées, certaines au sol.</li>
+<li>Frame 2 : Une personne tente d'appeler les services d'urgence.</li>
+<li>Frame 5 : Une autre personne commence à porter assistance à une victime.</li>
+<li>Frame 10 : La personne inconsciente est réanimée.</li>
+<li>Frame 15 : Les services d'urgence arrivent.</li>
+</ol>
+<h2>Conclusions et Recommandations</h2>
+<ul>
+<li>Résumé de la gravité de l'incident : L'incident est grave, avec plusieurs blessés et une personne en état d'inconscience.</li>
+<li>Actions immédiates recommandées : Appeler immédiatement les services d'urgence (SAMU 190, Protection Civile 198, Police 197) et fournir une assistance médicale de base si possible.</li>
+<li>Observations supplémentaires : La zone doit être sécurisée pour éviter d'autres accidents.</li>
+<li>Numéros d'urgence Tunisie : SAMU 190, Protection Civile 198, Police 197.</li>
+</ul>
+            
+            <div class="emergency-numbers">
+                <h4>Numéros d'Urgence - Tunisie</h4>
+                <div class="numbers">
+                    <div class="number-item">
+                        <div class="number">190</div>
+                        <div class="label">SAMU</div>
+                    </div>
+                    <div class="number-item">
+                        <div class="number">198</div>
+                        <div class="label">Protection Civile</div>
+                    </div>
+                    <div class="number-item">
+                        <div class="number">197</div>
+                        <div class="label">Police</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Rapport généré automatiquement par Monkedh - 13/12/2025 19:17</p>
+        </div>
+    </div>
+</body>
+</html>

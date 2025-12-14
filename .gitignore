@@ -30,3 +30,5 @@ Desktop.ini
 
 # Logs
 *.log
+
+backend/assistant/src/monkedh/tools/video_report/output/

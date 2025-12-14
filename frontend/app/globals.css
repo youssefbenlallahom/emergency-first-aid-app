@@ -248,3 +248,114 @@ button {
   width: 120%;
   height: auto;
 }
+
+/* Embedded HTML Report Styles */
+.report-content-wrapper {
+  padding: 0;
+}
+
+.report-content-wrapper .container {
+  box-shadow: none !important;
+  border-radius: 1rem !important;
+  overflow: hidden;
+}
+
+.report-content-wrapper .header {
+  background: linear-gradient(135deg, #0891b2 0%, #0d9488 100%) !important;
+  border-radius: 1rem 1rem 0 0 !important;
+  padding: 1.5rem !important;
+}
+
+.report-content-wrapper .header h1 {
+  font-size: 1.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.report-content-wrapper .header .subtitle {
+  font-size: 0.95rem !important;
+}
+
+.report-content-wrapper .header .org {
+  font-size: 0.85rem !important;
+}
+
+.report-content-wrapper .metadata {
+  background: linear-gradient(135deg, #f0fdfa 0%, #ecfeff 100%) !important;
+  padding: 1rem 1.5rem !important;
+  border-bottom: 1px solid #99f6e4 !important;
+}
+
+.report-content-wrapper .metadata-icon {
+  background: linear-gradient(135deg, #0891b2 0%, #0d9488 100%) !important;
+  width: 36px !important;
+  height: 36px !important;
+}
+
+.report-content-wrapper .content {
+  padding: 1.5rem !important;
+  background: #fafafa !important;
+}
+
+.report-content-wrapper h2 {
+  color: #0891b2 !important;
+  border-bottom: 2px solid #0891b2 !important;
+  font-size: 1.25rem !important;
+}
+
+.report-content-wrapper h2::before {
+  background: #0d9488 !important;
+}
+
+.report-content-wrapper h3 {
+  color: #0d9488 !important;
+  border-left-color: #0891b2 !important;
+  font-size: 1.1rem !important;
+}
+
+.report-content-wrapper .emergency-numbers {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  border-radius: 0.75rem !important;
+  padding: 1rem !important;
+  margin-top: 1.5rem !important;
+}
+
+.report-content-wrapper .emergency-numbers h4 {
+  font-size: 1rem !important;
+}
+
+.report-content-wrapper .number-item .number {
+  font-size: 1.5rem !important;
+  width: 60px !important;
+  height: 60px !important;
+}
+
+.report-content-wrapper .footer {
+  background: linear-gradient(135deg, #0891b2 0%, #0d9488 100%) !important;
+  padding: 1rem !important;
+  border-radius: 0 0 1rem 1rem !important;
+}
+
+.report-content-wrapper .footer p {
+  font-size: 0.85rem !important;
+}
+
+/* Code blocks in report */
+.report-content-wrapper code {
+  background: #e0f2fe !important;
+  color: #0c4a6e !important;
+  padding: 0.15rem 0.4rem !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.8rem !important;
+}
+
+/* Blockquotes in report (transcription) */
+.report-content-wrapper blockquote {
+  background: linear-gradient(135deg, #f0fdfa 0%, #ecfeff 100%) !important;
+  border-left: 4px solid #0891b2 !important;
+  padding: 1rem !important;
+  border-radius: 0 0.5rem 0.5rem 0 !important;
+  margin: 1rem 0 !important;
+  font-style: italic !important;
+  color: #334155 !important;
+}
+

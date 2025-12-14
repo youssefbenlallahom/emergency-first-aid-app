@@ -1,0 +1,114 @@
+# ============================================
+# VIDEO REPORT TASKS - Emergency Video Analysis
+# ============================================
+
+extract_frames_task:
+  description: >
+    Extraire les frames du fichier vidéo situé à: {video_path}
+
+    Utiliser un taux d'échantillonnage de {sample_rate} secondes, c'est-à-dire extraire
+    une frame toutes les {sample_rate} secondes de la vidéo. Sauvegarder les frames
+    extraites dans le répertoire output/frames/ avec des horodatages clairs dans les
+    noms de fichiers.
+
+    S'assurer que le processus d'extraction capture les moments clés tout au long de
+    la durée complète de la vidéo. Retourner la liste complète des chemins vers toutes
+    les frames extraites.
+  expected_output: >
+    Une liste de chemins de fichiers vers toutes les frames vidéo extraites, sauvegardées
+    dans le répertoire output/frames/ avec des noms de fichiers indiquant leur horodatage
+    (ex: frame_0000_t0.00s.jpg).
+  agent: frame_extractor
+
+analyze_frames_task:
+  description: >
+    Analyser chaque frame vidéo extraite pour fournir des observations détaillées sur:
+
+    1. PERSONNES: Compter toutes les personnes visibles, décrire leurs positions
+       (debout, assis, au sol), état de santé (normal, en détresse, blessé), et
+       toute caractéristique identifiable de leur situation.
+
+    2. DANGERS DE SÉCURITÉ: Détecter et décrire toute fumée, feu, flammes, accidents,
+       situations dangereuses, conditions hasardeuses ou indicateurs d'urgence.
+
+    3. URGENCES MÉDICALES: Identifier spécifiquement les signes de:
+       - Arrêt cardiaque (personne effondrée, non réactive)
+       - Étouffement
+       - Hémorragies ou plaies visibles
+       - Brûlures
+       - Inconscience
+       - Difficultés respiratoires
+
+    4. ACTIONS: Documenter ce que font les personnes - appellent-ils les services
+       d'urgence, fournissent de l'assistance, pratiquent une RCP, utilisent des
+       extincteurs, etc.
+
+    5. ENVIRONNEMENT: Décrire le cadre général, l'éclairage, intérieur/extérieur,
+       type de lieu, et toute information contextuelle.
+
+    Soyez SPÉCIFIQUE concernant toute personne en détresse ou ayant besoin d'aide.
+    Cette analyse sera utilisée par les services d'urgence du Ministère de la Santé.
+  expected_output: >
+    Une liste complète de descriptions détaillées frame par frame incluant:
+    identifiant de frame, horodatage, nombre et états des personnes, dangers détectés,
+    urgences médicales identifiées, actions observées et contexte environnemental.
+  agent: vision_analyst
+
+analyze_audio_task:
+  description: >
+    Analyser la piste audio de la vidéo située à: {video_path}
+
+    Effectuer une analyse audio complète incluant:
+
+    1. TRANSCRIPTION DE LA PAROLE:
+       - Transcrire toutes les conversations et paroles audibles
+       - Horodater précisément chaque segment de parole
+       - Identifier les mots-clés liés aux urgences (aide, secours, ambulance, etc.)
+
+    2. SONS CRITIQUES:
+       - Identifier cris, crashs, alarmes, sirènes
+       - Horodater tous les sons importants
+       - Évaluer le niveau d'urgence
+
+    3. ANALYSE DES ÉMOTIONS:
+       - Détecter les émotions dans la parole (panique, détresse, calme)
+       - Identifier les changements émotionnels au fil du temps
+
+    4. CHRONOLOGIE AUDIO:
+       - Créer une timeline des événements audio importants
+       - Corréler avec les observations visuelles
+  expected_output: >
+    Résumé complet de l'analyse audio avec transcription, sons critiques détectés,
+    émotions identifiées et chronologie des événements audio.
+  agent: audio_analyst
+
+generate_report_task:
+  description: >
+    Générer un rapport d'incident complet en {language} à partir des analyses visuelles et audio.
+
+    Le rapport doit inclure:
+
+    1. RÉSUMÉ EXÉCUTIF: Aperçu bref (2-3 phrases) de ce qui s'est passé
+
+    2. OBSERVATIONS DÉTAILLÉES:
+       - Personnes et leurs actions
+       - Dangers de sécurité détectés
+       - Urgences médicales identifiées
+       - Chronologie des événements
+
+    3. ANALYSE AUDIO (si disponible):
+       - Transcription des conversations
+       - Sons critiques détectés
+       - Émotions identifiées
+
+    4. CONCLUSIONS ET RECOMMANDATIONS:
+       - Gravité de l'incident
+       - Actions immédiates recommandées
+       - Numéros d'urgence Tunisie: SAMU 190, Protection Civile 198, Police 197
+
+    Le rapport doit être professionnel, factuel et exploitable par les équipes d'intervention.
+  expected_output: >
+    Chemin vers le rapport Markdown et HTML généré, contenant une analyse complète
+    de l'incident vidéo avec recommandations pour les services d'urgence.
+  agent: report_generator
+  output_file: 'output/report.md'

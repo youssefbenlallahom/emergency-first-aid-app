@@ -48,6 +48,50 @@ export interface ClearHistoryResponse {
   message: string;
 }
 
+// Video Report Types
+export interface VideoAnalysisResponse {
+  report_id: string;
+  status: string;
+  message: string;
+  video_info?: {
+    filename?: string;
+    size?: number;
+  };
+}
+
+export interface VideoReportItem {
+  id: string;
+  title: string;
+  date: string;
+  status: string;
+  thumbnail?: string;
+  summary?: string;
+}
+
+export interface VideoReportListResponse {
+  reports: VideoReportItem[];
+  total_count: number;
+}
+
+export interface VideoReportDetail {
+  id: string;
+  title: string;
+  date: string;
+  status: string;
+  content_html: string;
+  content_markdown: string;
+  video_info?: Record<string, unknown>;
+  frame_analyses?: Array<Record<string, unknown>>;
+  audio_analysis?: Record<string, unknown>;
+}
+
+export interface VideoAnalysisStatus {
+  report_id: string;
+  status: string;
+  created_at?: string;
+  error?: string;
+}
+
 export interface ApiError {
   error: string;
   detail: string;
@@ -221,6 +265,195 @@ export async function isApiAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+
+// ============================================
+// Video Report API
+// ============================================
+
+/**
+ * Upload and analyze a video for emergency report generation
+ */
+export async function analyzeVideo(
+  file: File,
+  options?: {
+    language?: string;
+    sendEmail?: boolean;
+    email?: string;
+  }
+): Promise<VideoAnalysisResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('language', options?.language || 'fr');
+  formData.append('send_email', String(options?.sendEmail || false));
+  if (options?.email) {
+    formData.append('email', options.email);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/video/analyze`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      detail: 'Échec de l\'analyse de la vidéo',
+    }));
+    throw new Error(error.detail || 'Failed to analyze video');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get the status of a video analysis task
+ */
+export async function getVideoAnalysisStatus(reportId: string): Promise<VideoAnalysisStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/video/status/${encodeURIComponent(reportId)}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      detail: 'Échec de la récupération du statut',
+    }));
+    throw new Error(error.detail || 'Failed to get status');
+  }
+
+  return response.json();
+}
+
+/**
+ * List all video reports
+ */
+export async function listVideoReports(): Promise<VideoReportListResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/video/reports`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      detail: 'Échec de la récupération des rapports',
+    }));
+    throw new Error(error.detail || 'Failed to list reports');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get a specific video report by ID
+ */
+export async function getVideoReport(reportId: string): Promise<VideoReportDetail> {
+  const response = await fetch(`${API_BASE_URL}/api/video/reports/${encodeURIComponent(reportId)}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      detail: 'Rapport non trouvé',
+    }));
+    throw new Error(error.detail || 'Failed to get report');
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a video report
+ */
+export async function deleteVideoReport(reportId: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/video/reports/${encodeURIComponent(reportId)}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      detail: 'Échec de la suppression du rapport',
+    }));
+    throw new Error(error.detail || 'Failed to delete report');
+  }
+
+  return response.json();
+}
+
+/**
+ * Send a video report via email
+ */
+export async function emailVideoReport(
+  reportId: string,
+  email: string,
+  subject?: string
+): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/video/reports/${encodeURIComponent(reportId)}/email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, subject }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      detail: 'Échec de l\'envoi de l\'email',
+    }));
+    throw new Error(error.detail || 'Failed to send email');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get frame image URL for a video report
+ */
+export function getVideoFrameUrl(reportId: string, filename: string): string {
+  return `${API_BASE_URL}/api/video/frames/${encodeURIComponent(reportId)}/${encodeURIComponent(filename)}`;
+}
+
+/**
+ * Poll for video analysis completion
+ */
+export async function pollVideoAnalysis(
+  reportId: string,
+  onStatusChange?: (status: string) => void,
+  maxAttempts: number = 60,
+  intervalMs: number = 2000
+): Promise<VideoReportDetail> {
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    const status = await getVideoAnalysisStatus(reportId);
+    
+    if (onStatusChange) {
+      onStatusChange(status.status);
+    }
+    
+    if (status.status === 'completed') {
+      return getVideoReport(reportId);
+    }
+    
+    if (status.status === 'error') {
+      throw new Error(status.error || 'L\'analyse de la vidéo a échoué');
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    attempts++;
+  }
+  
+  throw new Error('Délai d\'attente dépassé pour l\'analyse de la vidéo');
 }
 
 
