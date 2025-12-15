@@ -1,0 +1,132 @@
+{
+  "metadata": {
+    "training_date": "2025-12-15T23:42:52.819337",
+    "total_states": 7,
+    "total_actions": 23
+  },
+  "best_actions_per_state": {
+    "low_rate_score_low": {
+      "action": "arm_score_8_words",
+      "expected_value": 2.5926708071428575
+    },
+    "low_hand_position_score_low": {
+      "action": "arm_score_8_words",
+      "expected_value": 5.574869033000001
+    },
+    "low_depth_score_low": {
+      "action": "overall_10_words",
+      "expected_value": 1.1479999999999997
+    },
+    "medium_hand_position_score_low": {
+      "action": "rate_score_7_words",
+      "expected_value": 0.8349143899836016
+    },
+    "low_rate_score_high": {
+      "action": "arm_score_4_words",
+      "expected_value": -0.984
+    },
+    "low_arm_score_low": {
+      "action": "arm_score_8_words",
+      "expected_value": 4.32869
+    },
+    "medium_arm_score_low": {
+      "action": "arm_score_4_words",
+      "expected_value": 0.5220000000000001
+    }
+  },
+  "feedback_effectiveness": {
+    "rate_score_3_words": {
+      "avg_reward": 5.639560457390757,
+      "usage_count": 7
+    },
+    "arm_score_4_words": {
+      "avg_reward": -0.24916666666666665,
+      "usage_count": 24
+    },
+    "rate_score_2_words": {
+      "avg_reward": 8.549193830301025,
+      "usage_count": 3
+    },
+    "arm_score_2_words": {
+      "avg_reward": 3.438888888888889,
+      "usage_count": 9
+    },
+    "arm_score_17_words": {
+      "avg_reward": 1.2600000000000005,
+      "usage_count": 2
+    },
+    "arm_score_5_words": {
+      "avg_reward": -14.399999999999999,
+      "usage_count": 1
+    },
+    "rate_score_7_words": {
+      "avg_reward": 4.219125253479683,
+      "usage_count": 21
+    },
+    "depth_score_6_words": {
+      "avg_reward": -4.08,
+      "usage_count": 2
+    },
+    "arm_score_19_words": {
+      "avg_reward": 7.25,
+      "usage_count": 2
+    },
+    "arm_score_6_words": {
+      "avg_reward": 10.90333333333333,
+      "usage_count": 3
+    },
+    "arm_score_9_words": {
+      "avg_reward": -0.9600000000000007,
+      "usage_count": 1
+    },
+    "overall_29_words": {
+      "avg_reward": -3.8400000000000003,
+      "usage_count": 3
+    },
+    "overall_30_words": {
+      "avg_reward": 0.7200000000000016,
+      "usage_count": 1
+    },
+    "overall_28_words": {
+      "avg_reward": 1.950000000000002,
+      "usage_count": 2
+    },
+    "overall_26_words": {
+      "avg_reward": 4.039999999999998,
+      "usage_count": 2
+    },
+    "hand_position_score_28_words": {
+      "avg_reward": -1.9049999999999994,
+      "usage_count": 2
+    },
+    "arm_score_10_words": {
+      "avg_reward": 3.383333333333333,
+      "usage_count": 6
+    },
+    "recoil_score_5_words": {
+      "avg_reward": -1.79499574829932,
+      "usage_count": 28
+    },
+    "rate_score_11_words": {
+      "avg_reward": 2.8749794944544815,
+      "usage_count": 21
+    },
+    "arm_score_8_words": {
+      "avg_reward": 8.953742559523809,
+      "usage_count": 16
+    },
+    "overall_10_words": {
+      "avg_reward": -1.2551851851851852,
+      "usage_count": 18
+    },
+    "overall_7_words": {
+      "avg_reward": 2.0548997493734333,
+      "usage_count": 19
+    },
+    "overall_9_words": {
+      "avg_reward": 1.2879999999999996,
+      "usage_count": 10
+    }
+  },
+  "recommendations": {}
+}

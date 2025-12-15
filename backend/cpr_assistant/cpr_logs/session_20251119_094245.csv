@@ -1,0 +1,4 @@
+timestamp,frame_number,overall_score,arm_score,arm_angle,hand_position_score,depth_score,depth_cm,rate_score,rate_cpm,recoil_score,compression_ratio,ratio_score,compression_count,fatigue_level,feedback_given
+2025-11-19T09:43:05.193525,300,26,0,16,60,0,0,0,0,100,50,100,0,0,
+2025-11-19T09:43:07.577419,340,30,0,16,100,0,0,0,0,100,50,100,0,0,
+2025-11-19T09:43:31.064503,750,35,0,5,0,50,103.1,0,0,100,50,100,0,0,

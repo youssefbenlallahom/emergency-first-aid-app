@@ -1,0 +1,19 @@
+timestamp,frame_number,overall_score,arm_score,arm_angle,hand_position_score,depth_score,depth_cm,rate_score,rate_cpm,recoil_score,compression_ratio,ratio_score,compression_count,fatigue_level,feedback_given
+2025-12-15T23:36:28.922620,20,23,22,142,0,0,0,0,0,100,50,100,0,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:30.918619,40,50,100,167,0,50,62.7,0,0,100,50,100,1,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:31.906667,50,59,100,164,100,50,357.8,0,0,87,50,100,2,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:32.908971,60,46,100,169,0,50,51.3,0,0,55,50,100,2,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:33.916816,70,25,3,129,0,50,416.2,0.24916248997308799,30,40,23,50,3,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:34.908793,80,34,59,157,0,50,60.9,0,26,52,23,50,3,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:35.919564,90,26,0,14,0,50,1085.9,0,23,58,19,50,3,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:36.924986,100,29,0,121,19,50,371.1,0,20,73,14,50,3,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:37.919501,110,25,0,104,0,50,1484.6,0,18,46,11,50,3,0,Redressez vos bras - utilisez le poids de votre corps
+2025-12-15T23:36:38.925109,120,33,62,176,0,50,62.8,0,27,40,13,50,5,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:39.918502,130,31,33,149,19,50,443.7,0,25,40,14,50,5,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:40.916869,140,30,33,150,3,50,84.6,1.2752139992838067,33,43,20,50,7,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:41.915519,150,39,62,177,0,50,59.8,2.2653219011807266,35,70,36,70,8,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:42.926402,160,37,57,179,0,50,65.7,1.0937848432782715,32,70,33,66,8,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:43.910818,170,34,58,178,0,50,60.5,1.9843309838480252,34,52,25,50,9,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:44.927826,180,43,100,175,0,50,73.7,3.8497873118517276,38,61,31,63,10,0,Verrouillez vos coudes complètement - bras tendus
+2025-12-15T23:36:50.911823,240,42,100,169,0,50,31.4,4.0862841406394,38,40,33,66,11,0,Rythme trop lent - suivez le métronome
+2025-12-15T23:36:51.924835,250,33,33,149,0,50,59.9,7.273654398603313,45,40,35,70,13,0,Rythme trop lent - suivez le métronome

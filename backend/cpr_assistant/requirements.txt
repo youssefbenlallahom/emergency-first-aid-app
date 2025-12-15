@@ -1,0 +1,13 @@
+transformers>=4.38
+accelerate
+pillow
+flask
+pyngrok
+num2words
+nest_asyncio
+ultralytics
+opencv-python
+pyttsx3
+pygame
+pandas
+numpy

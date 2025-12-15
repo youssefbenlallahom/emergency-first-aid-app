@@ -6,31 +6,17 @@ import {
   CameraOff,
   ArrowLeft,
   Play,
-  Pause,
-  RotateCcw,
-  CheckCircle2,
   AlertCircle,
-  Volume2,
   Heart,
-  Shield,
-  Zap,
-  Activity,
   Info,
-  Phone,
-  MessageCircle,
+  Volume2,
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useRef, useEffect, useCallback } from "react"
+import { io, Socket } from "socket.io-client"
 
-type CPRState = "idle" | "ready" | "active" | "paused"
+type CPRState = "idle" | "ready" | "active"
 type FeedbackType = "correct" | "incorrect" | "neutral"
-
-function pseudoRandom01(seed: number) {
-  let t = seed + 0x6d2b79f5
-  t = Math.imul(t ^ (t >>> 15), t | 1)
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-}
 
 interface CompressionFeedback {
   depth: FeedbackType
@@ -38,216 +24,17 @@ interface CompressionFeedback {
   position: FeedbackType
 }
 
-function HeartbeatPulse({ isActive }: { isActive: boolean }) {
-  return (
-    <motion.div
-      className="absolute top-4 right-4 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5"
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-    >
-      <motion.div
-        animate={isActive ? { scale: [1, 1.3, 1] } : { scale: 1 }}
-        transition={{ duration: 0.5, repeat: isActive ? Infinity : 0 }}
-      >
-        <Heart className={`w-4 h-4 ${isActive ? "text-red-500 fill-red-500" : "text-white/60"}`} />
-      </motion.div>
-      <span className="text-xs font-medium text-white/80">
-        {isActive ? "En cours" : "Prêt"}
-      </span>
-    </motion.div>
-  )
+interface CPRScores {
+  overall: number
+  depth_score: number
+  depth_cm: number
+  rate_score: number
+  rate_cpm: number
+  hand_position_score: number
+  compression_count: number
 }
 
-function CompressionCounter({
-  count,
-  isActive,
-}: {
-  count: number
-  isActive: boolean
-}) {
-  const cycleCount = Math.floor(count / 30)
-  const currentInCycle = count % 30
-
-  return (
-    <motion.div
-      className="absolute top-20 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md rounded-2xl px-6 py-4 border border-white/10"
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      <div className="text-center">
-        <motion.span
-          key={count}
-          initial={{ scale: 1.5, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="text-5xl font-bold text-white block"
-        >
-          {currentInCycle || 30}
-        </motion.span>
-        <p className="text-xs text-white/60 mt-1">sur 30 compressions</p>
-        <div className="flex items-center justify-center gap-2 mt-2">
-          <div className="px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/30">
-            <span className="text-xs font-medium text-cyan-400">Cycle {cycleCount + 1}</span>
-          </div>
-          <div className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30">
-            <span className="text-xs font-medium text-emerald-400">Total: {count}</span>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-function RhythmGuide({ isActive }: { isActive: boolean }) {
-  return (
-    <motion.div
-      className="absolute bottom-36 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      <div className="flex items-center gap-1.5">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <motion.div
-            key={i}
-            className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-gradient-to-r from-cyan-400 to-teal-400"
-            animate={
-              isActive
-                ? {
-                    scale: [1, 1.6, 1],
-                    opacity: [0.3, 1, 0.3],
-                  }
-                : { scale: 1, opacity: 0.3 }
-            }
-            transition={{
-              duration: 0.5,
-              repeat: isActive ? Infinity : 0,
-              delay: i * 0.08,
-            }}
-          />
-        ))}
-      </div>
-      <motion.div
-        className="bg-black/60 backdrop-blur-sm rounded-full px-4 py-1.5"
-        animate={{ scale: isActive ? [1, 1.03, 1] : 1 }}
-        transition={{ duration: 1, repeat: isActive ? Infinity : 0 }}
-      >
-        <span className="text-white/90 text-sm font-medium">🎵 100-120 bpm</span>
-      </motion.div>
-    </motion.div>
-  )
-}
-
-function FeedbackDisplay({ feedback }: { feedback: CompressionFeedback }) {
-  const items = [
-    { label: "Profondeur", status: feedback.depth, icon: Activity },
-    { label: "Rythme", status: feedback.rate, icon: Zap },
-    { label: "Position", status: feedback.position, icon: Shield },
-  ]
-
-  return (
-    <motion.div
-      className="absolute top-20 right-3 space-y-2"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-    >
-      {items.map((item, index) => (
-        <motion.div 
-          key={item.label} 
-          className={`flex items-center gap-2 backdrop-blur-md rounded-xl px-3 py-2.5 border ${
-            item.status === "correct" 
-              ? "bg-emerald-500/20 border-emerald-500/30" 
-              : item.status === "incorrect" 
-                ? "bg-red-500/20 border-red-500/30" 
-                : "bg-black/50 border-white/10"
-          }`}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: index * 0.1 }}
-        >
-          {item.status === "correct" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          ) : item.status === "incorrect" ? (
-            <AlertCircle className="w-4 h-4 text-red-400" />
-          ) : (
-            <item.icon className="w-4 h-4 text-white/50" />
-          )}
-          <span className={`text-xs font-medium ${
-            item.status === "correct" 
-              ? "text-emerald-300" 
-              : item.status === "incorrect" 
-                ? "text-red-300" 
-                : "text-white/70"
-          }`}>{item.label}</span>
-        </motion.div>
-      ))}
-    </motion.div>
-  )
-}
-
-function HandPositionOverlay() {
-  return (
-    <motion.div
-      className="absolute inset-0 flex items-center justify-center pointer-events-none"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      {/* Outer glow */}
-      <motion.div
-        className="absolute w-44 h-44 rounded-full bg-emerald-500/10"
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.2, 0.4, 0.2],
-        }}
-        transition={{ duration: 2, repeat: Infinity }}
-      />
-      
-      {/* Target zone */}
-      <motion.div
-        className="relative w-36 h-36 border-4 border-dashed rounded-full"
-        animate={{
-          scale: [1, 1.05, 1],
-          borderColor: ["#34d399", "#10b981", "#34d399"],
-        }}
-        transition={{ duration: 1.5, repeat: Infinity }}
-        style={{ borderColor: "#34d399" }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <motion.div
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          >
-            <Heart className="w-10 h-10 text-emerald-400 fill-emerald-400/30" />
-          </motion.div>
-        </div>
-
-        {/* Corner markers */}
-        {[0, 90, 180, 270].map((angle) => (
-          <motion.div
-            key={angle}
-            className="absolute w-3 h-3 bg-emerald-400 rounded-full"
-            style={{
-              top: "50%",
-              left: "50%",
-              transform: `rotate(${angle}deg) translateY(-72px) translateX(-50%)`,
-            }}
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 1, repeat: Infinity, delay: angle / 360 }}
-          />
-        ))}
-
-        {/* Guide text */}
-        <motion.div
-          className="absolute -bottom-14 left-1/2 -translate-x-1/2 whitespace-nowrap"
-          animate={{ opacity: [0.7, 1, 0.7], y: [0, -2, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <span className="text-sm text-white font-medium bg-gradient-to-r from-emerald-500/80 to-teal-500/80 px-4 py-2 rounded-full shadow-lg">
-            👐 Placez vos mains ici
-          </span>
-        </motion.div>
-      </motion.div>
-    </motion.div>
-  )
-}
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
 
 export default function CPRCameraPage() {
   const [cprState, setCprState] = useState<CPRState>("idle")
@@ -257,400 +44,602 @@ export default function CPRCameraPage() {
     rate: "neutral",
     position: "neutral",
   })
+  const [scores, setScores] = useState<CPRScores | null>(null)
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null)
-  const [audioEnabled, setAudioEnabled] = useState(true)
+  const [videoReady, setVideoReady] = useState(false)
+  const [vlmFeedback, setVlmFeedback] = useState<string | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected")
+  const [debugLog, setDebugLog] = useState<string[]>([])
+  const [ttsEnabled, setTtsEnabled] = useState(true)
+  
   const videoRef = useRef<HTMLVideoElement>(null)
-  const countIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const socketRef = useRef<Socket | null>(null)
+  const frameIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  // FIX: addLog must be defined BEFORE speak because speak relies on it 
+  // in its dependency array and its function body.
+  const addLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    const logMessage = `[${timestamp}] ${message}`
+    console.log(logMessage)
+    setDebugLog(prev => [...prev.slice(-20), logMessage])
+  }, [])
+
+  // Text-to-Speech function
+  const speak = useCallback((text: string) => {
+    if (!ttsEnabled || !text) return
+    
+    try {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel()
+      
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.lang = 'fr-FR'
+      utterance.rate = 0.9
+      utterance.pitch = 1.0
+      utterance.volume = 1.0
+      
+      // Try to find a French voice
+      const voices = window.speechSynthesis.getVoices()
+      const frenchVoice = voices.find(voice => voice.lang.startsWith('fr'))
+      if (frenchVoice) {
+        utterance.voice = frenchVoice
+      }
+      
+      window.speechSynthesis.speak(utterance)
+      addLog('🔊 Speaking: ' + text)
+    } catch (error: any) {
+      addLog('⚠️ TTS error: ' + error.message)
+    }
+  }, [ttsEnabled, addLog]) // addLog is now defined
+
+  // Initialize WebSocket
+  useEffect(() => {
+    addLog('🔌 Initializing Socket.IO connection to: ' + BACKEND_URL)
+    setConnectionStatus('connecting')
+    
+    const socket = io(BACKEND_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    })
+
+    socketRef.current = socket
+
+    socket.on('connect', () => {
+      addLog('✅ Socket.IO connected!')
+      setConnectionStatus('connected')
+    })
+
+    socket.on('disconnect', () => {
+      addLog('❌ Socket.IO disconnected')
+      setConnectionStatus('disconnected')
+    })
+
+    socket.on('cpr_analysis', (data) => {
+      if (data.detection && data.scores) {
+        setScores(data.scores)
+        setCompressionCount(data.scores.compression_count)
+        setFeedback(data.feedback)
+        addLog(`📊 Analysis: ${data.scores.compression_count} compressions, ${data.scores.overall}% score`)
+      } else {
+        addLog('⚠️ No CPR detected in frame')
+      }
+    })
+
+    socket.on('vlm_feedback', (data) => {
+      addLog('💡 VLM: ' + data.advice)
+      setVlmFeedback(data.advice)
+      speak(data.advice)  // Speak the advice!
+      setTimeout(() => setVlmFeedback(null), 8000)
+    })
+
+    socket.on('error', (data) => {
+      addLog('❌ Backend error: ' + data.message)
+    })
+
+    return () => {
+      addLog('🔌 Cleaning up socket')
+      socket.disconnect()
+    }
+  }, [addLog, speak]) // Added 'speak' to dependencies for completeness
 
   const startCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraPermission(true)
-        setCprState("ready")
-      }
-    } catch {
-      setCameraPermission(false)
-    }
-  }, [])
-
-  const stopCamera = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
-      tracks.forEach((track) => track.stop())
-      videoRef.current.srcObject = null
-    }
-    setCprState("idle")
-    setCameraPermission(null)
-  }, [])
-
-  const startCPR = useCallback(() => {
-    setCprState("active")
-    setCompressionCount(0)
-
-    // Simulate compression counting
-    countIntervalRef.current = setInterval(() => {
-      setCompressionCount((prev) => prev + 1)
-
-      // Simulate random feedback with higher chance of correct
-      const getStatus = (): FeedbackType => {
-        const rand = Math.random()
-        if (rand < 0.6) return "correct"
-        if (rand < 0.8) return "neutral"
-        return "incorrect"
+      addLog('📷 Requesting camera access...')
+      
+      // Check video ref BEFORE requesting camera
+      if (!videoRef.current) {
+        addLog('❌ Video ref is null before camera request!')
+        await new Promise(resolve => setTimeout(resolve, 100))
+        if (!videoRef.current) {
+          addLog('❌ Video ref still null after delay!')
+          throw new Error('Video element not ready')
+        }
       }
       
-      setFeedback({
-        depth: getStatus(),
-        rate: getStatus(),
-        position: getStatus(),
+      addLog('✅ Video ref confirmed present')
+      
+      // Request camera with specific constraints
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: "user",
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        },
+        audio: false,
       })
-    }, 550)
-  }, [])
-
-  const pauseCPR = useCallback(() => {
-    setCprState("paused")
-    if (countIntervalRef.current) {
-      clearInterval(countIntervalRef.current)
-    }
-  }, [])
-
-  const resetCPR = useCallback(() => {
-    setCprState("ready")
-    setCompressionCount(0)
-    setFeedback({
-      depth: "neutral",
-      rate: "neutral",
-      position: "neutral",
-    })
-    if (countIntervalRef.current) {
-      clearInterval(countIntervalRef.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      stopCamera()
-      if (countIntervalRef.current) {
-        clearInterval(countIntervalRef.current)
+      
+      addLog(`✅ Camera stream obtained - ${stream.getTracks().length} track(s)`)
+      stream.getTracks().forEach(track => {
+        addLog(`   Track: ${track.kind} - ${track.label} - ${track.readyState}`)
+      })
+      
+      streamRef.current = stream
+      
+      // Double-check video ref again
+      if (!videoRef.current) {
+        addLog('❌ Video ref is null after stream obtained!')
+        throw new Error('Video element disappeared')
+      }
+      
+      // Attach stream to video element
+      videoRef.current.srcObject = stream
+      addLog('✅ Stream attached to video element')
+      
+      // Set video attributes explicitly
+      videoRef.current.setAttribute('playsinline', 'true')
+      videoRef.current.setAttribute('autoplay', 'true')
+      videoRef.current.muted = true
+      
+      // Wait for video to be ready
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          addLog('❌ Video load timeout after 5 seconds')
+          reject(new Error('Video load timeout'))
+        }, 5000)
+        
+        if (!videoRef.current) {
+          clearTimeout(timeout)
+          reject(new Error('Video ref is null'))
+          return
+        }
+        
+        videoRef.current.onloadedmetadata = async () => {
+          if (!videoRef.current) return
+          
+          addLog(`✅ Video metadata loaded: ${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`)
+          addLog(`   readyState: ${videoRef.current.readyState}`)
+          
+          try {
+            // Explicitly play the video
+            await videoRef.current.play()
+            addLog('✅ Video.play() successful')
+            addLog(`   paused: ${videoRef.current.paused}`)
+            addLog(`   currentTime: ${videoRef.current.currentTime}`)
+            
+            clearTimeout(timeout)
+            setVideoReady(true)
+            resolve()
+          } catch (playError: any) {
+            addLog('❌ Video.play() failed: ' + playError.message)
+            clearTimeout(timeout)
+            reject(playError)
+          }
+        }
+        
+        videoRef.current.onerror = (e) => {
+          addLog('❌ Video element error: ' + e)
+          clearTimeout(timeout)
+          reject(e)
+        }
+      })
+      
+      setCameraPermission(true)
+      setCprState("ready")
+      addLog('✅ Camera ready - State updated to "ready"')
+      
+      // Initialize backend
+      addLog('🔄 Initializing backend session...')
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/cpr/initialize`, { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          addLog('✅ Backend initialized: ' + JSON.stringify(data))
+        } else {
+          addLog('⚠️ Backend init failed: ' + response.status)
+        }
+      } catch (err: any) {
+        addLog('⚠️ Backend init error: ' + err.message)
+      }
+    } catch (error: any) {
+      addLog('❌ Camera error: ' + error.message)
+      console.error('Full camera error:', error)
+      setCameraPermission(false)
+      setVideoReady(false)
+      
+      // Clean up stream if it was created
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop()
+          addLog('🛑 Stopped track: ' + track.label)
+        })
+        streamRef.current = null
       }
     }
-  }, [stopCamera])
+  }, [addLog])
+
+  const stopCamera = useCallback(() => {
+    addLog('🛑 Stopping camera...')
+    
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current)
+      frameIntervalRef.current = null
+      addLog('⏹️ Stopped frame capture')
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop()
+        addLog(`🛑 Stopped track: ${track.label}`)
+      })
+      streamRef.current = null
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+      videoRef.current.pause()
+    }
+    
+    setCprState("idle")
+    setCameraPermission(null)
+    setVideoReady(false)
+    setScores(null)
+    setCompressionCount(0)
+    
+    fetch(`${BACKEND_URL}/api/cpr/stop`, { method: 'POST' })
+      .then(() => addLog('✅ Backend stopped'))
+      .catch((err) => addLog('⚠️ Backend stop error: ' + err.message))
+  }, [addLog])
+
+  const captureAndSendFrame = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || !socketRef.current) {
+      return
+    }
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+
+    if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      return
+    }
+
+    try {
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+      const frameData = canvas.toDataURL('image/jpeg', 0.8)
+      socketRef.current.emit('video_frame', {
+        frame: frameData,
+        timestamp: Date.now()
+      })
+    } catch (err: any) {
+      addLog('❌ Frame capture error: ' + err.message)
+    }
+  }, [addLog])
+
+  const startCPR = useCallback(async () => {
+    addLog('▶️ Starting CPR monitoring...')
+    setCprState("active")
+    setCompressionCount(0)
+    
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/cpr/start`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (response.ok) {
+        addLog('✅ Backend CPR started')
+      } else {
+        addLog('⚠️ Backend start failed: ' + response.status)
+      }
+    } catch (error: any) {
+      addLog('❌ Backend start error: ' + error.message)
+    }
+
+    // Start frame capture at 10 FPS
+    frameIntervalRef.current = setInterval(() => {
+      captureAndSendFrame()
+    }, 100)
+    
+    addLog('✅ Frame capture started (10 FPS)')
+  }, [captureAndSendFrame, addLog])
+
+  // Load voices when available
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0) {
+        const frVoices = voices.filter(v => v.lang.startsWith('fr'))
+        addLog(`🔊 TTS: ${voices.length} voices available, ${frVoices.length} French`)
+      }
+    }
+    
+    loadVoices()
+    window.speechSynthesis.onvoiceschanged = loadVoices
+  }, [addLog])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current)
+      }
+      window.speechSynthesis.cancel()
+    }
+  }, [])
 
   return (
     <div className="min-h-[100dvh] bg-slate-900 flex flex-col">
-      {/* Header - Enhanced */}
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="sticky top-0 z-50 bg-black/70 backdrop-blur-xl border-b border-white/5 safe-area-top"
+        className="sticky top-0 z-50 bg-black/70 backdrop-blur-xl border-b border-white/5"
       >
-        <div className="w-full max-w-3xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-white/80 hover:text-white active:text-white/60 transition-colors px-2 py-1.5 rounded-lg hover:bg-white/10">
-            <motion.div whileHover={{ x: -3 }} whileTap={{ scale: 0.95 }}>
-              <ArrowLeft className="w-5 h-5" />
-            </motion.div>
-            <span className="font-medium text-sm sm:text-base">Retour</span>
+        <div className="w-full max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 text-white/80 hover:text-white">
+            <ArrowLeft className="w-5 h-5" />
+            <span className="font-medium">Retour</span>
           </Link>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/20 to-teal-500/20 border border-cyan-500/30">
-              <Heart className="w-4 h-4 text-red-500" />
-              <span className="font-semibold text-white text-sm">Guide CPR</span>
-            </div>
+            <Heart className="w-4 h-4 text-red-500" />
+            <span className="font-semibold text-white text-sm">CPR Debug Mode</span>
+            <div 
+              className={`w-2 h-2 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-green-500' : 
+                connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
+              }`} 
+              title={connectionStatus}
+            />
+            <button
+              onClick={() => setTtsEnabled(!ttsEnabled)}
+              className={`ml-2 p-1.5 rounded-lg transition-colors ${
+                ttsEnabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
+              }`}
+              title={ttsEnabled ? 'Audio ON' : 'Audio OFF'}
+            >
+              <Volume2 className="w-4 h-4" />
+            </button>
           </div>
-          <motion.button
-            onClick={() => setAudioEnabled(!audioEnabled)}
-            className={`p-2.5 rounded-xl transition-all ${
-              audioEnabled 
-                ? "text-white bg-white/10 hover:bg-white/20" 
-                : "text-white/40 bg-white/5"
-            }`}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Volume2 className="w-5 h-5" />
-          </motion.button>
         </div>
       </motion.header>
 
-      {/* Camera View */}
-      <div className="flex-1 relative bg-black">
-        {cprState === "idle" ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900"
-          >
-            {/* Animated background */}
-            <div className="absolute inset-0 overflow-hidden">
-              {Array.from({ length: 20 }).map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute w-2 h-2 rounded-full bg-cyan-500/10"
-                  initial={{
-                    x: `${pseudoRandom01(i * 11 + 1) * 100}%`,
-                    y: `${pseudoRandom01(i * 11 + 2) * 100}%`,
-                  }}
-                  animate={{
-                    y: [null, `${pseudoRandom01(i * 11 + 3) * 100}%`],
-                    opacity: [0, 0.5, 0],
-                  }}
-                  transition={{
-                    duration: 8 + pseudoRandom01(i * 11 + 4) * 4,
-                    repeat: Infinity,
-                    delay: pseudoRandom01(i * 11 + 5) * 3,
-                  }}
-                />
-              ))}
-            </div>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 max-w-7xl mx-auto w-full">
+        {/* Camera View */}
+        <div className="flex-1 relative bg-black rounded-2xl overflow-hidden min-h-[500px] border-2 border-white/10">
+          {cprState === "idle" ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6">
+              <Camera className="w-16 h-16 text-cyan-400 mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">CPR Camera Debug</h2>
+              <p className="text-white/60 text-center mb-6 max-w-md">
+                This diagnostic version will help identify camera issues
+              </p>
 
-            <motion.div 
-              className="relative z-10 w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border-2 border-cyan-500/30 flex items-center justify-center mb-6"
-              animate={{ 
-                boxShadow: [
-                  "0 0 20px rgba(8, 145, 178, 0.2)",
-                  "0 0 40px rgba(8, 145, 178, 0.4)",
-                  "0 0 20px rgba(8, 145, 178, 0.2)",
-                ]
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              <Camera className="w-12 h-12 sm:w-14 sm:h-14 text-cyan-400" />
-            </motion.div>
-            
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center relative z-10">
-              Guide CPR avec Vision IA
-            </h2>
-            <p className="text-white/60 text-center text-sm sm:text-base mb-8 max-w-sm relative z-10 leading-relaxed">
-              Activez la caméra pour recevoir des <span className="text-cyan-400 font-medium">instructions visuelles en temps réel</span> sur les gestes de réanimation cardio-pulmonaire.
-            </p>
-
-            <motion.button
-              onClick={startCamera}
-              className="px-7 sm:px-8 py-3.5 sm:py-4 bg-gradient-to-r from-[#0891B2] via-cyan-500 to-teal-500 text-white rounded-2xl font-semibold text-base sm:text-lg shadow-2xl shadow-cyan-500/30 active:scale-95 transition-transform relative z-10"
-              whileHover={{ scale: 1.05, boxShadow: "0 20px 40px -10px rgba(8, 145, 178, 0.5)" }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <span className="flex items-center gap-2">
-                <Camera className="w-5 h-5" />
-                Activer la caméra
-              </span>
-            </motion.button>
-
-            {cameraPermission === false && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }} 
-                animate={{ opacity: 1, y: 0 }} 
-                className="mt-6 p-4 bg-red-500/20 border border-red-500/30 rounded-xl max-w-sm relative z-10"
+              <button
+                onClick={startCamera}
+                disabled={connectionStatus !== 'connected'}
+                className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-teal-500 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform"
               >
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
-                  <div>
-                    <p className="text-red-300 font-medium text-sm">Accès caméra refusé</p>
-                    <p className="text-red-300/70 text-xs mt-1">Veuillez autoriser l&apos;accès dans les paramètres de votre navigateur.</p>
+                {connectionStatus === 'connected' ? 'Test Camera' : 
+                  connectionStatus === 'connecting' ? 'Connecting...' : 'Server Offline'}
+              </button>
+
+              {cameraPermission === false && (
+                <div className="mt-6 p-4 bg-red-500/20 border border-red-500/30 rounded-xl max-w-md">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+                    <div>
+                      <p className="text-red-300 font-medium text-sm">Camera Access Denied</p>
+                      <p className="text-red-300/70 text-xs mt-1">Check browser permissions</p>
+                    </div>
                   </div>
                 </div>
-              </motion.div>
+              )}
+
+              {connectionStatus === 'disconnected' && (
+                <div className="mt-6 p-4 bg-amber-500/20 border border-amber-500/30 rounded-xl max-w-md">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5" />
+                    <div>
+                      <p className="text-amber-300 font-medium text-sm">Backend Disconnected</p>
+                      <p className="text-amber-300/70 text-xs mt-1">
+                        Make sure api_server.py is running on port 5000
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+          
+          {/* Video element - ALWAYS rendered, just hidden when idle */}
+          <div className={`relative w-full h-full ${cprState === "idle" ? "hidden" : ""}`}>
+            {/* Video element with explicit styling */}
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              muted
+              className="w-full h-full object-cover"
+              style={{
+                display: 'block',
+                backgroundColor: '#000',
+                minHeight: '500px',
+                minWidth: '100%'
+              }}
+            />
+            
+            {/* Debug overlay to verify video is rendering */}
+            {videoReady && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                <div className="bg-cyan-500/20 border-2 border-cyan-500 rounded-lg p-4 text-center">
+                  <p className="text-cyan-300 text-sm font-mono">
+                    Video Element Active
+                    <br />
+                    {videoRef.current?.videoWidth}x{videoRef.current?.videoHeight}
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {/* Loading indicator */}
+            {!videoReady && cprState !== "idle" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+                <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-white text-sm">Loading video...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Video ready indicator */}
+            {videoReady && cprState !== "idle" && (
+              <div className="absolute top-4 left-4 bg-green-500/90 backdrop-blur-sm rounded-lg px-3 py-1.5 z-20 shadow-lg">
+                <span className="text-white text-xs font-semibold">🎥 Camera Active</span>
+              </div>
+            )}
+            
+            {/* Test pattern overlay - helps verify rendering */}
+            {videoReady && (
+              <div className="absolute bottom-4 left-4 bg-purple-500/80 rounded-lg px-3 py-2 text-white text-xs font-mono z-20">
+                Stream: {streamRef.current?.active ? '✓ Active' : '✗ Inactive'}
+                <br />
+                Tracks: {streamRef.current?.getTracks().length || 0}
+              </div>
+            )}
+            
+            {cprState === "ready" && videoReady && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                <button
+                  onClick={startCPR}
+                  className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-semibold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg"
+                >
+                  <Play className="w-5 h-5" />
+                  Start CPR Analysis
+                </button>
+              </div>
             )}
 
-            {/* Features grid */}
-            <div className="grid grid-cols-3 gap-3 mt-8 w-full max-w-sm relative z-10">
-              {[
-                { icon: Activity, label: "Temps réel", color: "text-cyan-400" },
-                { icon: Shield, label: "Guide précis", color: "text-emerald-400" },
-                { icon: Heart, label: "Rythme CPR", color: "text-red-400" },
-              ].map((item, index) => (
-                <motion.div
-                  key={item.label}
-                  className="bg-white/5 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 + index * 0.1 }}
-                  whileHover={{ scale: 1.05, backgroundColor: "rgba(255,255,255,0.1)" }}
-                >
-                  <item.icon className={`w-5 h-5 mx-auto mb-1.5 ${item.color}`} />
-                  <span className="text-[10px] sm:text-xs text-white/70 font-medium">{item.label}</span>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Emergency call option */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="mt-8 relative z-10"
-            >
-              <a href="tel:190">
-                <motion.button
-                  className="flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 text-sm font-medium"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Phone className="w-4 h-4" />
-                  Urgence ? Appelez le 190
-                </motion.button>
-              </a>
-            </motion.div>
-          </motion.div>
-        ) : (
-          <>
-            {/* Video Feed */}
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-
-            {/* Heartbeat indicator */}
-            <HeartbeatPulse isActive={cprState === "active"} />
-
-            {/* Overlays */}
-            <AnimatePresence>
-              {(cprState === "ready" || cprState === "active") && <HandPositionOverlay />}
-              {cprState === "active" && (
-                <>
-                  <CompressionCounter count={compressionCount} isActive={cprState === "active"} />
-                  <FeedbackDisplay feedback={feedback} />
-                  <RhythmGuide isActive={cprState === "active"} />
-                </>
-              )}
-            </AnimatePresence>
-
-            {/* Controls - Enhanced */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="absolute bottom-8 sm:bottom-10 left-0 right-0 flex items-center justify-center gap-4 sm:gap-5 px-4"
-            >
-              {cprState === "ready" && (
-                <motion.button
-                  onClick={startCPR}
-                  className="flex items-center gap-2.5 px-6 sm:px-8 py-3.5 sm:py-4 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-2xl font-semibold text-base sm:text-lg shadow-2xl shadow-emerald-500/40 active:scale-95"
-                  whileHover={{ scale: 1.05, boxShadow: "0 20px 40px -10px rgba(34, 197, 94, 0.5)" }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Play className="w-5 h-5 sm:w-6 sm:h-6" />
-                  Démarrer CPR
-                </motion.button>
-              )}
-
-              {cprState === "active" && (
-                <>
-                  <motion.button
-                    onClick={pauseCPR}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center active:scale-90 shadow-xl shadow-amber-500/30"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Pause className="w-6 h-6 sm:w-7 sm:h-7" />
-                  </motion.button>
-                  <motion.button
-                    onClick={resetCPR}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center active:scale-90 border border-white/20"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <RotateCcw className="w-6 h-6 sm:w-7 sm:h-7" />
-                  </motion.button>
-                </>
-              )}
-
-              {cprState === "paused" && (
-                <>
-                  <motion.button
-                    onClick={startCPR}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-500 text-white flex items-center justify-center active:scale-90 shadow-xl shadow-emerald-500/30"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Play className="w-6 h-6 sm:w-7 sm:h-7" />
-                  </motion.button>
-                  <motion.button
-                    onClick={resetCPR}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center active:scale-90 border border-white/20"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <RotateCcw className="w-6 h-6 sm:w-7 sm:h-7" />
-                  </motion.button>
-                </>
-              )}
-
-              <motion.button
-                onClick={stopCamera}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 text-white flex items-center justify-center active:scale-90 shadow-xl shadow-red-500/30"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <CameraOff className="w-6 h-6 sm:w-7 sm:h-7" />
-              </motion.button>
-            </motion.div>
-          </>
-        )}
-      </div>
-
-      {/* Instructions Panel - Enhanced */}
-      <AnimatePresence>
-        {cprState !== "idle" && (
-          <motion.div
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
-            className="bg-white rounded-t-3xl p-5 sm:p-6 safe-area-bottom shadow-2xl"
-          >
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4" />
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
-                <Info className="w-4 h-4 text-white" />
+            {cprState === "active" && scores && (
+              <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-md rounded-xl p-4 text-white">
+                <div className="text-3xl font-bold mb-2">{scores.compression_count}</div>
+                <div className="text-xs text-white/60 mb-3">Compressions</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-white/60">Rate:</span>
+                    <span className="font-semibold">{scores.rate_cpm}/min</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-white/60">Depth:</span>
+                    <span className="font-semibold">{scores.depth_cm}cm</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-white/60">Score:</span>
+                    <span className="font-semibold">{scores.overall}%</span>
+                  </div>
+                </div>
               </div>
-              <h3 className="font-bold text-slate-800 text-base sm:text-lg">Instructions CPR</h3>
+            )}
+
+            {cprState !== "idle" && (
+              <button
+                onClick={stopCamera}
+                className="absolute top-4 right-4 w-12 h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors shadow-lg"
+              >
+                <CameraOff className="w-6 h-6" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Debug Panel */}
+        <div className="lg:w-96 bg-slate-800 rounded-2xl p-4 flex flex-col border-2 border-white/10">
+          <div className="flex items-center gap-2 mb-4">
+            <Info className="w-5 h-5 text-cyan-400" />
+            <h3 className="font-bold text-white">Debug Console</h3>
+          </div>
+          
+          <div className="flex-1 bg-black/50 rounded-xl p-3 overflow-y-auto font-mono text-xs space-y-1 max-h-[400px] min-h-[300px]">
+            {debugLog.length === 0 ? (
+              <div className="text-white/40">Waiting for events...</div>
+            ) : (
+              debugLog.map((log, i) => (
+                <div 
+                  key={i} 
+                  className={`whitespace-pre-wrap break-all ${
+                    log.includes('❌') ? 'text-red-400' : 
+                    log.includes('✅') ? 'text-green-400' : 
+                    log.includes('⚠️') ? 'text-yellow-400' : 
+                    log.includes('💡') ? 'text-purple-400' :
+                    log.includes('🔍') ? 'text-blue-400' :
+                    'text-green-300'
+                  }`}
+                >
+                  {log}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2 text-xs">
+            <div className="flex justify-between p-2 bg-black/30 rounded">
+              <span className="text-white/60">Backend:</span>
+              <span className={connectionStatus === 'connected' ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
+                {connectionStatus}
+              </span>
             </div>
-            <ol className="text-sm text-slate-600 space-y-3">
-              {[
-                { step: 1, text: "Placez le talon de votre main au centre de la poitrine (sternum)" },
-                { step: 2, text: "Entrelacez vos doigts et gardez les bras tendus" },
-                { step: 3, text: "Comprimez à 5-6 cm de profondeur, 100-120 fois/minute" },
-              ].map((item) => (
-                <motion.li 
-                  key={item.step}
-                  className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100"
-                  whileHover={{ scale: 1.01, backgroundColor: "rgb(241 245 249)" }}
-                >
-                  <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#0891B2] to-cyan-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {item.step}
-                  </span>
-                  <span className="leading-relaxed">{item.text}</span>
-                </motion.li>
-              ))}
-            </ol>
-            
-            {/* Quick actions */}
-            <div className="flex gap-3 mt-4">
-              <Link href="/voice-call" className="flex-1">
-                <motion.button
-                  className="w-full py-2.5 bg-gradient-to-r from-cyan-50 to-teal-50 text-[#0891B2] rounded-xl font-medium text-sm border border-cyan-100 flex items-center justify-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Volume2 className="w-4 h-4" />
-                  Aide vocale
-                </motion.button>
-              </Link>
-              <Link href="/chat" className="flex-1">
-                <motion.button
-                  className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm flex items-center justify-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Chat IA
-                </motion.button>
-              </Link>
+            <div className="flex justify-between p-2 bg-black/30 rounded">
+              <span className="text-white/60">Camera:</span>
+              <span className={cameraPermission ? 'text-green-400 font-semibold' : 'text-white/40'}>
+                {cameraPermission === null ? 'Not requested' : cameraPermission ? 'Active' : 'Denied'}
+              </span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="flex justify-between p-2 bg-black/30 rounded">
+              <span className="text-white/60">Video Ready:</span>
+              <span className={videoReady ? 'text-green-400 font-semibold' : 'text-white/40'}>
+                {videoReady ? 'Yes' : 'No'}
+              </span>
+            </div>
+            <div className="flex justify-between p-2 bg-black/30 rounded">
+              <span className="text-white/60">State:</span>
+              <span className="text-cyan-400 font-semibold">{cprState}</span>
+            </div>
+            {scores && (
+              <div className="flex justify-between p-2 bg-black/30 rounded">
+                <span className="text-white/60">Compressions:</span>
+                <span className="text-cyan-400 font-semibold">{compressionCount}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -119,3 +119,4 @@ class Monkedh():
             cache=False,    # Pas de cache crew-level
             memory=False,   # Désactiver long-term memory (inutile pour urgences)
         )
+    
