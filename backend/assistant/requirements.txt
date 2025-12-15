@@ -27,14 +27,14 @@ websockets
 pyaudio
 
 # Video Report Dependencies
-opencv-python>=4.8.0
-moviepy>=1.0.3
-markdown>=3.4.0
-httpx>=0.24.0
-groq>=0.4.0
-python-multipart>=0.0.6
-aiofiles>=23.0.0
-librosa>=0.10.0
-scipy>=1.10.0
-torchaudio>=2.0.0
-transformers>=4.30.0
+opencv-python
+moviepy
+markdown
+httpx
+groq
+python-multipart
+aiofiles
+librosa
+scipy
+torchaudio
+transformers
