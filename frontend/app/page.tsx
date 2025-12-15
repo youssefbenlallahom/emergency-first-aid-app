@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   Zap,
   Users,
-  MapPin
+  MapPin,
+  Video
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -583,6 +584,7 @@ export default function HomePage() {
               { icon: MessageCircle, label: "Chat", href: "/chat" },
               { icon: Mic, label: "Appel", href: "/voice-call" },
               { icon: Camera, label: "CPR", href: "/cpr-camera" },
+              { icon: Video, label: "Rapport", href: "/video-report" },
             ].map((item) => (
               <Link
                 key={item.label}
