@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import type { LucideIcon } from "lucide-react"
@@ -28,6 +29,16 @@ import {
   type RealtimeTimelineEntry,
   type RealtimeEmergencyResponse,
 } from "@/lib/api"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface EmergencyMetrics {
   frame_number: number
@@ -64,6 +75,15 @@ interface XAIHeatmapPayload {
   }[]
   explanation?: string
   max_score?: number
+}
+
+interface RedirectPromptState {
+  destination?: string
+  message: string
+  confirmationPrompt: string
+  prefillMessage?: string
+  hazardType?: string
+  callId?: string
 }
 
 const hazardLabels: Record<string, { label: string; color: string }> = {
@@ -171,6 +191,81 @@ function formatChannelLabel(channel?: string | null): string {
   return channel === "frontend_queue" ? "Agent IA" : channel
 }
 
+const RESPONSE_DEDUPE_WINDOW_MS = 2 * 60 * 1000
+const RESPONSE_DEDUPE_INDEX_WINDOW = 6
+
+interface ResponseDedupeRecord {
+  index: number
+  timestamp: number
+}
+
+function isRedirectResponseEntry(response?: RealtimeEmergencyResponse | null): boolean {
+  if (!response) {
+    return false
+  }
+  return response.action === "redirect" || response.channel === "frontend_redirect"
+}
+
+function normalizeResponseServiceKey(response: RealtimeEmergencyResponse): string {
+  return (response.service_type || response.service || response.tool || "DEFAULT").toUpperCase()
+}
+
+function parseResponseTimestamp(timestamp?: string | null): number {
+  if (!timestamp) {
+    return 0
+  }
+  const parsed = Date.parse(timestamp)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function isWithinDuplicateWindow(a: ResponseDedupeRecord, b: ResponseDedupeRecord): boolean {
+  if (a.timestamp && b.timestamp && Math.abs(a.timestamp - b.timestamp) <= RESPONSE_DEDUPE_WINDOW_MS) {
+    return true
+  }
+  if (!a.timestamp || !b.timestamp) {
+    return Math.abs(a.index - b.index) <= RESPONSE_DEDUPE_INDEX_WINDOW
+  }
+  return false
+}
+
+function dedupeEmergencyResponses(responses: RealtimeEmergencyResponse[]): RealtimeEmergencyResponse[] {
+  if (!responses.length) {
+    return []
+  }
+  const manualCandidates = new Map<string, ResponseDedupeRecord>()
+  const autoRecords = new Map<string, ResponseDedupeRecord>()
+  const toRemove = new Set<number>()
+
+  responses.forEach((response, index) => {
+    if (isRedirectResponseEntry(response)) {
+      toRemove.add(index)
+      return
+    }
+    const key = normalizeResponseServiceKey(response)
+    const timestamp = parseResponseTimestamp(response.timestamp)
+    const record: ResponseDedupeRecord = { index, timestamp }
+
+    if (response.requires_manual_dispatch) {
+      const autoRecord = autoRecords.get(key)
+      if (autoRecord && isWithinDuplicateWindow(record, autoRecord)) {
+        toRemove.add(index)
+        return
+      }
+      manualCandidates.set(key, record)
+      return
+    }
+
+    const manualRecord = manualCandidates.get(key)
+    if (manualRecord && isWithinDuplicateWindow(manualRecord, record)) {
+      toRemove.add(manualRecord.index)
+      manualCandidates.delete(key)
+    }
+    autoRecords.set(key, record)
+  })
+
+  return responses.filter((_, index) => !toRemove.has(index))
+}
+
 const PARTICLE_DATA = [
   { w: 3.5, h: 4.2, bg: 0.08, x: 15, y: 25, tx: 85, ty: 60, dur: 14, del: 1 },
   { w: 2.8, h: 3.1, bg: 0.12, x: 45, y: 10, tx: 20, ty: 80, dur: 16, del: 2 },
@@ -211,6 +306,7 @@ function FloatingParticles() {
 }
 
 export default function RealtimeAnalysisPage() {
+  const router = useRouter()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [timeline, setTimeline] = useState<EmergencyMetrics[]>([])
   const [latestMetrics, setLatestMetrics] = useState<EmergencyMetrics | null>(null)
@@ -226,6 +322,7 @@ export default function RealtimeAnalysisPage() {
   const [agentFallbackActions, setAgentFallbackActions] = useState<string[]>([])
   const [xaiHeatmap, setXaiHeatmap] = useState<XAIHeatmapPayload | null>(null)
   const [xaiError, setXaiError] = useState<string | null>(null)
+  const [redirectPrompt, setRedirectPrompt] = useState<RedirectPromptState | null>(null)
   const [videoPanelHeight, setVideoPanelHeight] = useState<number | null>(null)
   const [syncTimelineHeight, setSyncTimelineHeight] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -379,6 +476,7 @@ export default function RealtimeAnalysisPage() {
       if (!payload) {
         return
       }
+      const isRedirectRequest = payload.action === "redirect" || payload.channel === "frontend_redirect"
       setEmergencyResponses((prev) => {
         const key = payload.call_id || `${payload.tool ?? "tool"}-${payload.service ?? "service"}-${payload.timestamp ?? Date.now()}`
         const next = prev.map((item) => {
@@ -394,7 +492,7 @@ export default function RealtimeAnalysisPage() {
         }
         return [...next, payload]
       })
-      if (!payload.requires_manual_dispatch) {
+      if (!payload.requires_manual_dispatch && !isRedirectRequest) {
         const noticeKey = payload.call_id || `${payload.tool ?? "tool"}-${payload.timestamp ?? Date.now()}`
         if (!autoCallNoticesRef.current.has(noticeKey)) {
           autoCallNoticesRef.current.add(noticeKey)
@@ -408,9 +506,47 @@ export default function RealtimeAnalysisPage() {
           })
         }
       }
+      if (isRedirectRequest) {
+        const confirmationPrompt =
+          payload.confirmation_prompt ||
+          "L'agent IA recommande d'ouvrir le chat pour guider l'utilisateur étape par étape."
+        const prefillMessage =
+          payload.prefill_message ||
+          payload.message ||
+          payload.situation_summary ||
+          payload.situation ||
+          "Incident critique détecté."
+        setRedirectPrompt({
+          destination: payload.destination || "/chat",
+          message: payload.message || payload.situation || "Incident critique détecté",
+          confirmationPrompt,
+          prefillMessage,
+          hazardType: payload.hazard_type,
+          callId: payload.call_id,
+        })
+        toast({
+          title: "Guidage chat recommandé",
+          description: confirmationPrompt,
+        })
+      }
     } catch (error) {
       console.error("Tool call event parse error", error)
     }
+  }, [])
+
+  const handleRedirectConfirm = useCallback(() => {
+    if (!redirectPrompt) {
+      return
+    }
+    const destination = redirectPrompt.destination || "/chat"
+    const prefill = redirectPrompt.prefillMessage || redirectPrompt.message
+    const targetUrl = prefill ? `${destination}?prefill=${encodeURIComponent(prefill)}` : destination
+    setRedirectPrompt(null)
+    router.push(targetUrl)
+  }, [redirectPrompt, router])
+
+  const handleRedirectDismiss = useCallback(() => {
+    setRedirectPrompt(null)
   }, [])
 
   const handleXaiHeatmapEvent = useCallback((event: MessageEvent<string>) => {
@@ -533,14 +669,15 @@ export default function RealtimeAnalysisPage() {
     : sessionId
       ? "bg-cyan-100 text-cyan-700"
       : "bg-slate-100 text-slate-600"
+  const visibleResponses = useMemo(() => dedupeEmergencyResponses(emergencyResponses), [emergencyResponses])
   const agentCallSummary = useMemo(() => {
     const summary = {
-      total: emergencyResponses.length,
+      total: visibleResponses.length,
       manualPending: 0,
       automated: 0,
       resolved: 0,
     }
-    emergencyResponses.forEach((response) => {
+    visibleResponses.forEach((response) => {
       const isManual = response.requires_manual_dispatch
       if (isManual && response.dispatch_status !== "completed") {
         summary.manualPending += 1
@@ -553,7 +690,7 @@ export default function RealtimeAnalysisPage() {
       }
     })
     return summary
-  }, [emergencyResponses])
+  }, [visibleResponses])
 
   useEffect(() => () => teardownSession(), [teardownSession])
 
@@ -621,7 +758,8 @@ export default function RealtimeAnalysisPage() {
   }, [videoPreviewUrl])
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-gradient-to-b from-slate-50 via-cyan-50/30 to-white">
+    <>
+      <div className="relative flex min-h-[100dvh] flex-col bg-gradient-to-b from-slate-50 via-cyan-50/30 to-white">
       <FloatingParticles />
 
       <motion.header
@@ -903,7 +1041,7 @@ export default function RealtimeAnalysisPage() {
             </div>
           </div>
 
-          {emergencyResponses.length > 0 ? (
+          {visibleResponses.length > 0 ? (
             <>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 {[
@@ -929,7 +1067,7 @@ export default function RealtimeAnalysisPage() {
               </div>
 
               <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                {emergencyResponses.map((response, index) => {
+                {visibleResponses.map((response, index) => {
                   const serviceKey = (response.service_type || response.service || "default").toUpperCase()
                   const visual = SERVICE_VISUALS[serviceKey] ?? SERVICE_VISUALS.DEFAULT
                   const Icon = visual.icon
@@ -1127,5 +1265,44 @@ export default function RealtimeAnalysisPage() {
 
       </main>
     </div>
+
+      <AlertDialog
+        open={Boolean(redirectPrompt)}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleRedirectDismiss()
+          }
+        }}
+      >
+        <AlertDialogContent className="max-w-lg border border-slate-200 bg-white/95">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Passer en mode chat&nbsp;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {redirectPrompt?.confirmationPrompt ||
+                "L'agent IA recommande d'ouvrir la conversation pour guider l'utilisateur."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4 text-sm text-slate-700">
+            <p className="text-xs uppercase text-cyan-500 font-semibold tracking-wide mb-1">
+              Message à pré-remplir
+            </p>
+            <p className="font-medium text-slate-900 whitespace-pre-wrap">
+              {redirectPrompt?.prefillMessage || redirectPrompt?.message}
+            </p>
+          </div>
+          {redirectPrompt?.hazardType && (
+            <p className="mt-3 text-xs text-slate-500">
+              Danger identifié&nbsp;: <span className="font-semibold text-rose-600">{redirectPrompt.hazardType}</span>
+            </p>
+          )}
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel onClick={handleRedirectDismiss}>Rester ici</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRedirectConfirm} className="bg-[#0891B2] hover:bg-cyan-700">
+              Ouvrir le chat sécurisé
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

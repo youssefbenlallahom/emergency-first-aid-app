@@ -489,6 +489,11 @@ export interface RealtimeEmergencyResponse {
   hazard_type?: string
   situation_summary?: string
   service_label?: string
+  action?: string
+  destination?: string
+  confirmation_prompt?: string
+  prefill_message?: string
+  auto_redirect?: boolean
 }
 
 export interface RealtimeVideoReport {

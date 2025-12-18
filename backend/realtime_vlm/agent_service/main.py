@@ -111,6 +111,57 @@ PHONE_STATUS_CACHE: Dict[str, Any] = {
 }
 PHONE_STATUS_TTL = float(os.getenv("PHONE_STATUS_TTL", "2.5"))
 
+REDIRECT_CONTEXT: Dict[str, Optional[str]] = {
+    "service": None,
+    "hazard": None,
+    "situation": None,
+    "timestamp": None,
+}
+
+SERVICE_CONTEXT_LABEL = {
+    "FIRE": "incendie confirmé",
+    "SAMU": "urgence médicale",
+    "POLICE": "intervention des forces de l'ordre",
+}
+
+HAZARD_CONTEXT_LABEL = {
+    "fire": "incendie actif",
+    "medical": "victime nécessitant des soins",
+}
+
+
+def _update_redirect_context(service: Optional[str] = None, hazard: Optional[str] = None, situation: Optional[str] = None):
+    if service:
+        REDIRECT_CONTEXT["service"] = service
+    if hazard:
+        REDIRECT_CONTEXT["hazard"] = hazard
+    if situation:
+        REDIRECT_CONTEXT["situation"] = situation.strip()
+    REDIRECT_CONTEXT["timestamp"] = datetime.utcnow().isoformat()
+
+
+def _contextual_summary_fallback(message: Optional[str]) -> str:
+    generic_hints = [
+        "switch to chat",
+        "guided instructions",
+        "open the chat",
+        "please go to chat",
+    ]
+    candidate = (message or "").strip()
+    lowered = candidate.lower()
+    if not candidate or any(hint in lowered for hint in generic_hints):
+        context_situation = REDIRECT_CONTEXT.get("situation") or "Incident critique détecté"
+        context_hazard = REDIRECT_CONTEXT.get("hazard")
+        context_service = REDIRECT_CONTEXT.get("service")
+        hazard_label = HAZARD_CONTEXT_LABEL.get(context_hazard or "", "")
+        service_label = SERVICE_CONTEXT_LABEL.get(context_service or "", "")
+        prefix_parts = [label for label in [hazard_label, service_label] if label]
+        prefix = ", ".join(prefix_parts)
+        if prefix:
+            return f"{prefix.capitalize()} – {context_situation}"
+        return context_situation
+    return candidate
+
 
 def _normalize_service_name(raw: Optional[str]) -> str:
     if not raw:
@@ -262,6 +313,8 @@ def call_authorities(service_type: str, urgency_level: str, situation_descriptio
         "situation_description": situation_description,
     }
     result["tool_output"] = result_copy
+
+    _update_redirect_context(service=normalized_service, situation=situation_description)
     
     return json.dumps(result, indent=2)
 
@@ -306,6 +359,8 @@ def phone_call_tool(service: str, hazard_type: str, situation_summary: str) -> s
         "situation_summary": situation_summary,
     }
     result["tool_output"] = result_copy
+
+    _update_redirect_context(service=service_value, hazard=hazard_clean, situation=situation_summary)
     return json.dumps(result, indent=2)
 
 
@@ -349,6 +404,51 @@ def phone_sms_tool(message: str, priority: str = "high") -> str:
     return json.dumps(result, indent=2)
 
 
+@tool
+def redirect_to_chat_tool(message: str, confirmation_prompt: Optional[str] = None, prefill_message: Optional[str] = None) -> str:
+    """
+    Ask the web dashboard to prompt the user before redirecting specifically to the /chat page.
+
+    Args:
+        message: Short explanation of why the redirect is required.
+        confirmation_prompt: Optional UI text for the confirmation dialog.
+        prefill_message: Optional text that should pre-populate the chat input field.
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    call_id = f"REDIRECT-{timestamp.replace(':', '').replace('-', '').replace(' ', '-')}"
+    summary = _contextual_summary_fallback(message)
+    if not summary:
+        summary = "Situation critique détectée - ouvrez le chat pour plus d'instructions"
+    prompt_text = (confirmation_prompt or "L'agent recommande de passer en mode chat pour guider l'utilisateur.").strip()
+    prefill_text = (
+        prefill_message
+        or f"Bonjour, j'ai besoin d'une assistance immédiate. {summary} Merci de me guider étape par étape pour sécuriser la zone."
+    ).strip()
+
+    result = {
+        "channel": "frontend_redirect",
+        "action": "redirect",
+        "status": "pending",
+        "destination": "/chat",
+        "message": summary,
+        "confirmation_prompt": prompt_text,
+        "prefill_message": prefill_text,
+        "timestamp": timestamp,
+        "call_id": call_id,
+        "priority": "critical",
+        "requires_manual_dispatch": False,
+        "dispatch_status": "pending",
+    }
+    result_copy = result.copy()
+    result["tool_input"] = {
+        "message": summary,
+        "confirmation_prompt": prompt_text,
+        "prefill_message": prefill_text,
+    }
+    result["tool_output"] = result_copy
+    return json.dumps(result, indent=2)
+
+
 # Initialize agent
 api_key = os.getenv("OPENAI_API_KEY")
 agent_model = os.getenv("AGENT_MODEL", "gpt-4o-mini")
@@ -367,7 +467,7 @@ else:
         )
         llm = ChatOpenAI(model=fallback_model, temperature=0, api_key=api_key)
         agent_model = fallback_model
-    tools = [call_authorities, phone_call_tool, phone_sms_tool]
+    tools = [call_authorities, phone_call_tool, phone_sms_tool, redirect_to_chat_tool]
 
     llm_with_tools = llm.bind_tools(tools)
 
@@ -383,7 +483,8 @@ else:
                     use phone_call_tool first (hazard_type must be "fire" or "medical"). When both fire and medical hazards exist, place TWO calls: one for FIRE and one for SAMU.
                 4. Otherwise, use call_authorities with the correct service_type and a concise situation_description.
                 5. Always finish by sending phone_sms_tool with a short status summary (start with "Sent by Monkedh:").
-                6. Never skip the call or SMS. Never just describe actions—execute the tools so humans receive alerts.
+                6. After you alert authorities immediately call redirect_to_chat_tool with a concise safety message so the UI can prompt the onsite user to switch to chat for guided instructions.
+                7. Never skip the call, SMS, or redirect. Never just describe actions—execute the tools so humans receive alerts.
             Keep reasoning brief and focus on taking action quickly.
             """,
         ),
@@ -537,6 +638,29 @@ Should authorities be called?
                         print(f"  💬 SMS alert recorded for frontend queue: {sms_data.get('message')}")
                     except Exception as parse_error:
                         print(f"  Failed to parse phone_sms_tool output: {parse_error}")
+                elif action.tool == "redirect_to_chat_tool":
+                    try:
+                        redirect_data = json.loads(output)
+                        emergency_calls.append({
+                            "tool": action.tool,
+                            "channel": redirect_data.get("channel", "frontend_redirect"),
+                            "action": redirect_data.get("action", "redirect"),
+                            "destination": redirect_data.get("destination", "/chat"),
+                            "message": redirect_data.get("message"),
+                            "confirmation_prompt": redirect_data.get("confirmation_prompt"),
+                            "prefill_message": redirect_data.get("prefill_message"),
+                            "timestamp": redirect_data.get("timestamp"),
+                            "call_id": redirect_data.get("call_id"),
+                            "priority": redirect_data.get("priority"),
+                            "status": redirect_data.get("status", "pending"),
+                            "requires_manual_dispatch": redirect_data.get("requires_manual_dispatch", False),
+                            "dispatch_status": redirect_data.get("dispatch_status", "pending"),
+                            "tool_input": action.tool_input,
+                            "tool_output": redirect_data,
+                        })
+                        print("  🔁 Redirect request queued for frontend UI")
+                    except Exception as parse_error:
+                        print(f"  Failed to parse redirect_to_chat_tool output: {parse_error}")
         
         if not emergency_calls:
             inferred_service = _infer_service_from_request_data(request)

@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { sendMessage, getSessionIds, isApiAvailable, clearSessionIds, getConversationHistory } from "@/lib/api"
 
@@ -446,6 +447,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const sessionRef = useRef<{ channelId: string; userId: string } | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -477,6 +480,16 @@ export default function ChatPage() {
     }
     initSession()
   }, [])
+
+  useEffect(() => {
+    const prefill = searchParams.get("prefill")
+    if (!prefill) {
+      return
+    }
+    setInputValue(prefill)
+    setTimeout(() => inputRef.current?.focus(), 0)
+    router.replace("/chat")
+  }, [router, searchParams])
 
   const handleSendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return
