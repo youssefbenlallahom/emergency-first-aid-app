@@ -1,0 +1,95 @@
+services:
+  #  VLLM service
+  vision-service:
+    build:
+      context: ./vision_service
+      dockerfile: Dockerfile
+    container_name: vision-service
+    ports:
+      - "8002:8002"
+    environment:
+      - LLAMA_SERVER_URL=http://host.docker.internal:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - realtime-vllm-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LangChain agent service
+  agent-service:
+    build:
+      context: ./agent_service
+      dockerfile: Dockerfile
+    container_name: agent-service
+    ports:
+      - "8001:8001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AGENT_MODEL=${AGENT_MODEL:-gpt-4o-mini}
+      - ORCHESTRATOR_URL=http://backend:8000
+      - PHONE_IP=${PHONE_IP}
+    networks:
+      - realtime-vllm-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Orchestrator Service (main backend)
+  backend:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: realtime-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - VISION_SERVICE_URL=http://vision-service:8002
+      - AGENT_SERVICE_URL=http://agent-service:8001
+      - XAI_SERVICE_URL=http://xai-service:8004
+      - XAI_ENABLED=${XAI_ENABLED:-true}
+      - PHONE_IP=${PHONE_IP}
+    networks:
+      - realtime-vllm-net
+    depends_on:
+      - vision-service
+      - agent-service
+      - xai-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # xai microservice for patch heatmaps
+  xai-service:
+    build:
+      context: ./xai_service
+      dockerfile: Dockerfile
+    container_name: xai-service
+    ports:
+      - "8004:8004"
+    environment:
+      - LLAMA_SERVER_URL=http://host.docker.internal:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - realtime-vllm-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8004/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  realtime-vllm-net:
+    driver: bridge
