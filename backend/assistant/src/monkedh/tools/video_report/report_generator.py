@@ -212,57 +212,34 @@ def summarize_report(
         # Generate report using LLM
         report_content = vision_client.generate_text(prompt)
         
-        # Add metadata header
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        full_report = report_content
         
-        if language == "arabe":
-            header = f"*تاريخ الإنشاء: {timestamp}*\n*الإطارات المحللة: {len(descriptions)}*\n*وزارة الصحة - الجمهورية التونسية*\n\n---\n\n"
-        else:
-            header = f"*Généré le: {timestamp}*\n*Frames analysées: {len(descriptions)}*\n*Ministère de la Santé - République Tunisienne*\n\n---\n\n"
-        
-        full_report = header + report_content
+        # Inject detailed audio section if available before the conclusion
+        if audio_section:
+            conclusion_headers = ["## Conclusions et Recommandations", "## الاستنتاجات والتوصيات", "## Conclusion"]
+            injected = False
+            for header in conclusion_headers:
+                if header in full_report:
+                    full_report = full_report.replace(header, f"---\n\n{audio_section}\n\n{header}")
+                    injected = True
+                    break
+            
+            if not injected:
+                full_report += "\n\n---\n\n" + audio_section
         
     except Exception as e:
         logger.error(f"Failed to generate report with LLM: {e}")
         
         # Fallback: create basic report without LLM
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
         if language == "arabe":
-            full_report = f"""# تقرير تحليل الفيديو
-
-*تاريخ الإنشاء: {timestamp}*
-*الإطارات المحللة: {len(descriptions)}*
-*وزارة الصحة - الجمهورية التونسية*
-
----
-
-## أوصاف الإطارات
-
+            full_report = f"""## أوصاف الإطارات
 {desc_text}
-
 {audio_section}
-
----
-*ملاحظة: هذا تقرير أساسي. فشل التحليل الكامل.*
 """
         else:
-            full_report = f"""# Rapport d'Analyse Vidéo
-
-*Généré le: {timestamp}*
-*Frames analysées: {len(descriptions)}*
-*Ministère de la Santé - République Tunisienne*
-
----
-
-## Descriptions des Frames
-
+            full_report = f"""## Descriptions des Frames
 {desc_text}
-
 {audio_section}
-
----
-*Note: Ceci est un rapport basique. L'analyse complète a échoué.*
 """
     
     # Save markdown report

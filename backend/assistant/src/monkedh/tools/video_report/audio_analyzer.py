@@ -360,7 +360,7 @@ def analyze_video_audio(video_path: str, language: str = "fr") -> Optional[Dict[
                         {
                             "start_time": seg["start_time"],
                             "end_time": seg["end_time"],
-                            "label": seg["category"],
+                            "category": seg["category"],
                             "confidence": seg["confidence"]
                         }
                         for seg in classification_results["segments"]
@@ -445,7 +445,7 @@ def format_audio_summary(results: Dict[str, Any]) -> str:
         return "Aucune piste audio détectée dans la vidéo."
     
     lines = []
-    lines.append("## Analyse Audio")
+    lines.append("## Détails Techniques de l'Analyse Audio")
     lines.append("")
     
     # Overview metadata
@@ -493,14 +493,28 @@ def format_audio_summary(results: Dict[str, Any]) -> str:
         lines.append("")
     
     # Phase 2: Transcription
+    transcription = results.get('transcription', {})
     full_transcript = results.get('full_transcript', '')
     if full_transcript:
         lines.append("### Phase 2: Transcription")
         lines.append("")
-        lines.append("**Transcription complète:**")
+        lines.append("**Synthèse Vocale:**")
         lines.append("")
         lines.append(f'> "{full_transcript}"')
         lines.append("")
+        
+        # Add Detailed Transcription Timeline
+        trans_segments = transcription.get('segments', [])
+        if trans_segments:
+            lines.append("**Détail de la Transcription (Horodaté):**")
+            lines.append("")
+            for seg in trans_segments:
+                start = seg.get('start_time', 0)
+                end = seg.get('end_time', 0)
+                text = seg.get('text', '').strip()
+                if text:
+                    lines.append(f"- `[{start:.2f}s - {end:.2f}s]` {text}")
+            lines.append("")
     
     # Phase 3: Emotion Detection
     emotions = results.get('emotions', [])

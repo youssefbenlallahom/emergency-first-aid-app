@@ -386,7 +386,8 @@ def markdown_to_html(
     md_content: str,
     frames_count: int = 0,
     language: str = "français",
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    full_html: bool = False
 ) -> Optional[str]:
     """Convert markdown content to styled HTML report.
     
@@ -395,6 +396,7 @@ def markdown_to_html(
         frames_count: Number of frames analyzed
         language: Report language ("français" or "arabe")
         output_path: Optional path to save HTML file
+        full_html: Whether to return a full HTML document (True) or just the content fragment (False)
         
     Returns:
         Path to HTML file if saved, or HTML content string
@@ -440,8 +442,13 @@ def markdown_to_html(
     template_vars["frames_count"] = str(frames_count)
     template_vars["content"] = html_content
     
-    # Generate final HTML
-    final_html = HTML_TEMPLATE.format(**template_vars)
+    # Generate final HTML or Fragment
+    if full_html:
+        final_html = HTML_TEMPLATE.format(**template_vars)
+    else:
+        # For fragment, we only return the content body, but maybe wrapped in a simple div
+        # We exclude the redundant header, metadata, and emergency numbers which the UI handles
+        final_html = f'<div class="report-content-body">{html_content}</div>'
     
     # Save if path provided
     if output_path:
@@ -449,8 +456,10 @@ def markdown_to_html(
             output_file = Path(output_path)
             output_file.parent.mkdir(parents=True, exist_ok=True)
             
+            # Always save full HTML for file downloads
+            full_doc = HTML_TEMPLATE.format(**template_vars)
             with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(final_html)
+                f.write(full_doc)
             
             logger.info(f"HTML report saved to: {output_path}")
             return str(output_file)

@@ -1592,11 +1592,24 @@ async def get_video_report(report_id: str):
             with open(report_path, "r", encoding="utf-8") as f:
                 content_markdown = f.read()
         
-        if html_path.exists():
+        if content_markdown:
+            content_html = markdown_to_html(content_markdown, full_html=False) if VIDEO_REPORT_AVAILABLE else content_markdown
+        elif html_path.exists():
             with open(html_path, "r", encoding="utf-8") as f:
                 content_html = f.read()
-        elif content_markdown:
-            content_html = markdown_to_html(content_markdown) if VIDEO_REPORT_AVAILABLE else content_markdown
+                # Simple strip for full HTML documents if they were saved previously
+                if "<body" in content_html:
+                    try:
+                        import re
+                        body_content = re.search(r'<div class="content">(.*?)<div class="emergency-numbers">', content_html, re.DOTALL)
+                        if body_content:
+                            content_html = body_content.group(1).strip()
+                        else:
+                            body_only = re.search(r'<body.*?>(.*?)</body>', content_html, re.DOTALL)
+                            if body_only:
+                                content_html = body_only.group(1).strip()
+                    except:
+                        pass
         
         return VideoReportDetailResponse(
             id=metadata.get("id", report_id),
