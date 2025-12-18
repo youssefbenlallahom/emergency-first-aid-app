@@ -585,6 +585,7 @@ export default function HomePage() {
               { icon: Mic, label: "Appel", href: "/voice-call" },
               { icon: Camera, label: "CPR", href: "/cpr-camera" },
               { icon: Video, label: "Rapport", href: "/video-report" },
+              { icon: Zap, label: "Temps réel", href: "/realtime-analysis" },
             ].map((item) => (
               <Link
                 key={item.label}

@@ -5,6 +5,10 @@
 
 // API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const REALTIME_API_BASE_URL =
+  process.env.NEXT_PUBLIC_REALTIME_VLM_URL ||
+  process.env.NEXT_PUBLIC_REALTIME_API_URL ||
+  API_BASE_URL;
 
 // ============================================
 // Types
@@ -414,6 +418,137 @@ export async function emailVideoReport(
   }
 
   return response.json();
+}
+
+// ============================================
+// Realtime Video Orchestrator API
+// ============================================
+
+export interface RealtimeVideoInfo {
+  fps?: number
+  total_frames?: number
+  duration_seconds?: number
+  width?: number
+  height?: number
+  duration_formatted?: string
+}
+
+export interface RealtimeAnalysisSummary {
+  threat_level: string
+  dominant_urgency_level: string
+  high_urgency_frames: number
+  medium_urgency_frames: number
+  normal_urgency_frames: number
+  low_urgency_frames: number
+  max_severity_index: number
+  average_severity_index: number
+  unique_hazards_detected: string[]
+  total_incidents: number
+  requires_immediate_response: boolean
+  phone_bridge_connected?: boolean
+  phone_bridge_ip?: string | null
+}
+
+export interface RealtimeTimelineEntry {
+  frame_number: number
+  timestamp: string
+  urgency_level: string
+  scene_description?: string
+  detected_hazards?: string[]
+}
+
+export interface RealtimeCriticalIncident extends RealtimeTimelineEntry {
+  people_count?: number | null
+  visible_injuries?: boolean
+  dispatch_recommended?: boolean
+  agent_response?: string
+  actions_taken?: Array<{ tool_name?: string; tool_output?: string; tool_input?: Record<string, unknown> }>
+}
+
+export interface RealtimeEmergencyResponse {
+  channel?: string
+  service?: string
+  message?: string
+  timestamp?: string
+  actions_taken?: string[]
+  service_type?: string
+  urgency?: string
+  situation?: string
+  call_id?: string
+  estimated_arrival?: string | null
+  phone_bridge_error?: string | null
+  phone_bridge_response?: Record<string, unknown>
+  fallback?: boolean
+  tool?: string
+  tool_input?: Record<string, unknown>
+  tool_output?: Record<string, unknown>
+  requires_manual_dispatch?: boolean
+  dispatch_status?: "pending" | "acknowledged" | "completed"
+  status?: string
+  priority?: string
+  hazard_type?: string
+  situation_summary?: string
+  service_label?: string
+}
+
+export interface RealtimeVideoReport {
+  video_info?: RealtimeVideoInfo
+  analysis_summary: RealtimeAnalysisSummary
+  urgency_timeline: RealtimeTimelineEntry[]
+  critical_incidents: RealtimeCriticalIncident[]
+  emergency_responses: RealtimeEmergencyResponse[]
+}
+
+export interface RealtimeVideoSessionResponse {
+  session_id: string
+  status: string
+}
+
+export interface RealtimeHealthResponse {
+  status: string
+  services: Record<string, string>
+  llama_server?: boolean
+  phone?: {
+    connected?: boolean
+    ip?: string | null
+    last_checked?: string | null
+    last_error?: string | null
+  }
+}
+
+export async function uploadEmergencyVideo(file: File): Promise<RealtimeVideoSessionResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${REALTIME_API_BASE_URL}/analyze/video-emergency`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(async () => {
+      const text = await response.text().catch(() => '')
+      return { detail: text || 'Échec de l\'analyse vidéo' }
+    })
+    throw new Error(errorBody?.detail || 'Impossible d\'analyser la vidéo')
+  }
+
+  return response.json()
+}
+
+export async function getRealtimeHealth(): Promise<RealtimeHealthResponse> {
+  const response = await fetch(`${REALTIME_API_BASE_URL}/health`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Impossible de joindre le backend temps réel')
+  }
+
+  return response.json()
 }
 
 /**
