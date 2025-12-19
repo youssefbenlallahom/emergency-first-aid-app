@@ -71,7 +71,7 @@ class Monkedh():
             llm=llm,
             max_iter=1,              # Permet retry mais évite boucles infinies
             cache=False,             # Force appel outils (pas de cache périmé)
-            verbose=False,           # Réduit overhead
+            verbose=True,           # Réduit overhead
             max_retry_limit=0,       # Max 2 retries par outil
             allow_delegation=False,  # Pas de délégation inter-agents
         )
@@ -114,7 +114,6 @@ class Monkedh():
             tasks=self.tasks,
             process=Process.sequential,
             short_term_memory=short_term_memory,
-            verbose=True,  # Désactiver logs verbeux
             tracing=False,
             cache=False,    # Pas de cache crew-level
             memory=False,   # Désactiver long-term memory (inutile pour urgences)
