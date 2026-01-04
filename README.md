@@ -9,21 +9,21 @@ The system integrates a **CrewAI-powered backend**, a **Next.js frontend**, and 
 
 ## 🌟 Key Features
 
-### 🧠 Intelligent Multi-Agent Chatbot
-- **Context-Aware**: Understands Tunisian dialects and specific emergency context.
+### 🧠 Specialized AI Emergency Agent
+- **Context-Aware**: Expert medical regulator agent ("Régulateur SAMU") trained for Tunisian emergency protocols (190).
 - **RAG System**: Retrieves accurate medical protocols from official manuals.
-- **Silent SAMU Delegation**: Automatically notifies emergency services (190) with structured reports without interrupting the user flow.
+- **Fast Response**: Optimized single-agent architecture for low-latency guidance in critical situations.
 
 ### 🗣️ Real-Time Voice Interaction
 - Hands-free voice mode powered by **Azure OpenAI GPT-Realtime**.
 - Natural conversation flow for high-stress situations.
 
 ### 📹 Vision & Video Analysis
-- **CPR Assistant**: AI-powered camera tool that monitors CPR quality (rate, depth) and provides real-time feedback (uses YOLO/PyTorch).
-- **Video Report**: Analyzes crash or emergency videos to generate detailed incident reports using VLM (Vision Language Models).
+- **CPR Assistant**: AI-powered camera tool that monitors CPR quality using **YOLOv8** and computer vision.
+- **Video Report**: Microservice-based architecture using **Vision Language Models (VLM)** to analyze crash or emergency videos and generate reports.
 
 ### 🖥️ Operator Dashboard
-- Real-time dashboard for SAMU operators to view incoming alerts, location data, and patient status.
+- **Next.js** dashboard for users to interact with the AI assistant via text or voice.
 
 ---
 
@@ -40,21 +40,22 @@ graph TD
     
     subgraph Backend Services
         Backend[FastAPI Main Server]
-        CrewAI[CrewAI Agents]
-        VLM[Realtime VLM Service]
+        CrewAI[CrewAI Agent]
+        VLM[Realtime VLM Service (Docker)]
         Redis[(Redis Memory)]
         Qdrant[(Qdrant Vector DB)]
         
         Backend --> CrewAI
         CrewAI --> Redis
         CrewAI --> Qdrant
-        CrewAI --> SAMU_API[SAMU Notification API]
+        
+        VLM --> VisionServe[Vision Service]
+        VLM --> AgentServe[LangChain Agent]
     end
     
     subgraph AI Models
         YOLO[YOLOv8 CPR Detection]
         Azure[Azure OpenAI GPT-4]
-        Embeddings[Ollama Embeddings]
     end
     
     CPR_AI --> YOLO
@@ -69,17 +70,26 @@ graph TD
 ### Frontend (`/frontend`)
 - **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
 - **Language**: TypeScript / React 19
-- **UI Library**: [Radix UI](https://www.radix-ui.com/), [Tailwind CSS](https://tailwindcss.com/)
+- **UI System**: [Shadcn UI](https://ui.shadcn.com/) (Radix Primitives)
+- **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
-- **AI Integration**: [CopilotKit](https://docs.copilotkit.ai/)
 
-### Backend (`/backend`)
-- **Core Framework**: [FastAPI](https://fastapi.tiangolo.com/)
-- **AI Agents**: [CrewAI](https://crewai.com/)
-- **LLM Provider**: Azure OpenAI (GPT-4), Ollama (Local Embeddings)
-- **Vector DB**: [Qdrant](https://qdrant.tech/)
-- **Memory**: Redis
-- **Computer Vision**: [PyTorch](https://pytorch.org/), [YOLOv8](https://github.com/ultralytics/ultralytics) (for CPR), CLIP (Image Search)
+### Backend (`/backend/assistant`)
+- **Core Logic**: [CrewAI](https://crewai.com/) (Single specialized agent)
+- **LLM Provider**: Azure OpenAI (GPT-4)
+- **Vector DB**: [Qdrant](https://qdrant.tech/) with [Ollama](https://ollama.ai/) embeddings
+- **Memory**: Redis (Short-term context)
+- **Search Tools**: Serper Dev (Google Search), ScrapeWebsiteTool
+
+### Computer Vision Modules
+- **CPR Assistant** (`/backend/cpr_assistant`):
+    - **YOLOv8** (`ultralytics`)
+    - **OpenCV** & **PyTorch**
+    - **Flask** API for streaming
+- **Realtime VLM** (`/backend/realtime_vlm`):
+    - **Dockerized Microservices**
+    - **LangChain**
+    - Customized Vision Service
 
 ---
 
@@ -90,8 +100,9 @@ graph TD
 - **Node.js** v18+ and **npm/pnpm**
 - **Python** 3.10 - 3.12
 - **Redis** server (Local or Cloud)
-- **Ollama** (for local embeddings - optional but recommended)
-- **API Keys**: Azure OpenAI, Serper (Google Search)
+- **Docker** (for VLM services)
+- **Ollama** (for local embeddings)
+- **API Keys**: Azure OpenAI, Serper, Qdrant (if cloud)
 
 ### 1️⃣ Installation
 
@@ -113,11 +124,6 @@ graph TD
     ```bash
     pip install -r requirements.txt
     ```
-4.  (Optional) For CPR Assistant:
-    ```bash
-    cd ../cpr_assistant
-    pip install -r requirements.txt
-    ```
 
 #### Frontend Setup
 
@@ -134,7 +140,7 @@ graph TD
 
 ### 2️⃣ Configuration
 
-Create a `.env` file in `backend/assistant/.env` with your API keys:
+Create a `.env` file in `backend/assistant/.env`:
 
 ```env
 # Azure OpenAI
@@ -151,27 +157,16 @@ REDIS_PORT=6379
 SERPER_API_KEY=your_serper_key
 ```
 
-Create a `.env.local` in `frontend/.env.local` if needed for frontend-specific keys (e.g., Maps API, Public backend URL).
-
 ---
 
 ## 🏃‍♂️ Usage
 
-### Running the Backend (AI Agents)
-
-To start the main CLI chatbot or the backend API:
+### Running the Assistant (Text/Voice)
 
 ```bash
 # In backend/assistant/
 python -m monkedh.main          # Text Chat CLI
 python -m monkedh.main --voice # Voice Mode
-```
-
-To run the API server for the frontend:
-
-```bash
-# In backend/assistant/ (or root depending on path config)
-python backend/main.py
 ```
 
 ### Running the Frontend
@@ -190,17 +185,24 @@ cd backend/cpr_assistant
 python api_server.py
 ```
 
+### Running VLM Services
+
+```bash
+cd backend/realtime_vlm
+docker-compose up --build
+```
+
 ---
 
 ## 📂 Project Structure
 
 - **`backend/`**
-    - **`assistant/`**: The core CrewAI logic, RAG implementation, and tools.
-    - **`cpr_assistant/`**: Computer vision logic for CPR monitoring.
-    - **`realtime_vlm/`**: Microservices for video report generation.
+    - **`assistant/`**: Core CrewAI agent ("Régulateur SAMU"), RAG, and image search tools.
+    - **`cpr_assistant/`**: Computer vision logic (`YOLO`) for real-time CPR monitoring.
+    - **`realtime_vlm/`**: Dockerized microservices for video analysis (`vision-service`, `agent-service`).
 - **`frontend/`**
-    - **`app/`**: Next.js App Router pages (Chat, Video Report, etc.).
-    - **`components/`**: Reusable UI components.
+    - **`app/`**: Next.js App Router structure.
+    - **`components/`**: Reusable UI components (Shadcn UI).
 
 ---
 
