@@ -10,53 +10,62 @@ from .report_formatter import markdown_to_html
 logger = logging.getLogger(__name__)
 
 
-SUMMARIZATION_PROMPT_FR = """Tu es un expert analyste d'incidents pour le Ministère de la Santé en Tunisie. 
-Basé sur les descriptions frame par frame ci-dessous, crée un rapport d'incident complet EN FRANÇAIS.
+CONCLUSION_PROMPT_FR = """Tu es un expert analyste d'incidents pour le Ministère de la Santé en Tunisie.
+Basé sur les descriptions frame par frame ci-dessous, crée une CONCLUSION SYNTHÉTIQUE EN FRANÇAIS.
 
 Descriptions des frames:
 {descriptions}
 
 {audio_section}
 
-Crée un rapport structuré en Markdown avec ces sections:
+Génère UNIQUEMENT les sections suivantes (pas de répétition des analyses frame par frame):
 
-# Rapport d'Analyse d'Incident Vidéo
+## 📋 Résumé Exécutif
+Aperçu global (3-4 phrases) de l'incident observé dans la vidéo.
 
-## Résumé Exécutif
-Aperçu bref (2-3 phrases) de ce qui s'est passé dans la vidéo.
+## 👥 Synthèse des Observations
 
-## Observations Détaillées
+### Personnes Identifiées
+- Nombre total de personnes observées
+- Actions principales effectuées
+- État général (debout, au sol, en mouvement, etc.)
 
-### Personnes et Actions
-- Nombre de personnes observées
-- Leurs positions et mouvements
-- Actions clés entreprises (ex: appel aux services d'urgence, assistance fournie)
+### 🚨 Urgences Médicales Détectées
+- Victimes en détresse (position, condition visible)
+- Type d'urgence identifiée (arrêt cardiaque, chute, hémorragie, etc.)
+- Niveau de gravité estimé
 
-### Préoccupations de Sécurité
-- Personne(s) en détresse ou blessée(s) (sois spécifique sur leur condition et localisation)
-- Présence de fumée, feu ou indicateurs d'accident
-- Autres dangers ou situations dangereuses
+### ⚠️ Dangers et Risques
+- Dangers environnementaux (feu, fumée, obstacle, etc.)
+- Risques pour les intervenants
+- Conditions de sécurité du lieu
 
-### Indicateurs d'Urgence Médicale
-- Signes d'arrêt cardiaque
-- Étouffement
-- Hémorragies
-- Brûlures
-- Inconscience
-- Autres urgences médicales
-
-### Chronologie des Événements
-Description chronologique de ce qui s'est produit à travers les frames analysées.
+### ⏱️ Évolution Chronologique
+Résumé chronologique des événements clés observés.
 
 {audio_report_section}
 
-## Conclusions et Recommandations
-- Résumé de la gravité de l'incident
-- Actions immédiates recommandées
-- Observations supplémentaires
-- Numéros d'urgence Tunisie: SAMU 190, Protection Civile 198, Police 197
+## 💡 Recommandations d'Intervention
 
-Sois factuel, spécifique et professionnel. Si quelqu'un est clairement en détresse, indique-le explicitement.
+### Actions Immédiates
+- Que faire en premier
+- Ressources nécessaires
+- Précautions à prendre
+
+### Protocoles Applicables
+- Protocoles d'urgence recommandés
+- Matériel médical nécessaire
+
+### Contacts d'Urgence Tunisie
+- 🚑 SAMU: 190
+- 🚒 Protection Civile: 198  
+- 👮 Police: 197
+- ☎️ Urgences Générales: 193
+
+## ⚖️ Niveau de Gravité
+Évaluation finale: [Mineur / Modéré / Grave / Critique]
+
+Sois factuel, précis et professionnel.
 """
 
 
@@ -108,11 +117,11 @@ SUMMARIZATION_PROMPT_AR = """أنت محلل خبير في الحوادث لوز
 """
 
 
-def get_summarization_prompt(language: str = "français") -> str:
-    """Get the appropriate summarization prompt based on language."""
+def get_conclusion_prompt(language: str = "français") -> str:
+    """Get the appropriate conclusion prompt based on language."""
     if language == "arabe":
         return SUMMARIZATION_PROMPT_AR
-    return SUMMARIZATION_PROMPT_FR
+    return CONCLUSION_PROMPT_FR
 
 
 def generate_report(
@@ -176,11 +185,40 @@ def summarize_report(
     if vision_client is None:
         vision_client = VisionClient(provider="llava")
     
-    logger.info(f"Generating final report in {language} from {len(descriptions)} frame descriptions")
+    logger.info(f"Generating frame-by-frame report with global conclusion in {language}")
     
-    # Format frame descriptions
+    # ============================================
+    # PARTIE 1: ANALYSE FRAME PAR FRAME DÉTAILLÉE
+    # ============================================
+    
+    frame_by_frame_report = "# 🎥 Rapport d'Analyse Vidéo d'Incident\n\n"
+    frame_by_frame_report += f"**Date**: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    frame_by_frame_report += f"**Frames analysées**: {len([d for d in descriptions if d.get('status') == 'success'])}\n\n"
+    frame_by_frame_report += "---\n\n"
+    frame_by_frame_report += "## 🔍 Analyse Frame par Frame (Llava)\n\n"
+    
+    # Ajouter chaque frame individuellement avec numérotation claire
+    for i, desc in enumerate(descriptions):
+        if desc.get('status') == 'success':
+            frame_num = i + 1
+            frame_name = Path(desc['frame_path']).name
+            frame_desc = desc['description']
+            
+            frame_by_frame_report += f"### 📸 Frame {frame_num} - `{frame_name}`\n\n"
+            frame_by_frame_report += f"{frame_desc}\n\n"
+            frame_by_frame_report += "---\n\n"
+        else:
+            frame_by_frame_report += f"### ⚠️ Frame {i+1} - Erreur d'analyse\n\n"
+            frame_by_frame_report += f"Erreur: {desc.get('description', 'Inconnue')}\n\n"
+            frame_by_frame_report += "---\n\n"
+    
+    # ============================================
+    # PARTIE 2: CONCLUSION GÉNÉRALE SYNTHÉTIQUE
+    # ============================================
+    
+    # Format frame descriptions for conclusion generation
     desc_text = "\n\n".join([
-        f"**Frame {i+1}** ({Path(d['frame_path']).name}):\n{d['description']}"
+        f"**Frame {i+1}**: {d['description']}"
         for i, d in enumerate(descriptions)
         if d.get('status') == 'success'
     ])
@@ -194,53 +232,48 @@ def summarize_report(
         audio_summary = format_audio_summary(audio_results)
         
         if language == "arabe":
-            audio_section = f"\nتحليل الصوت:\n{audio_summary}"
-            audio_report_section = "### تحليل الصوت\nنتائج تحليل الصوت المستخرج من الفيديو."
+            audio_section = f"\n**تحليل الصوت**:\n{audio_summary}"
+            audio_report_section = "### 🎧 Analyse Audio\nRésultats de l'analyse audio extraite de la vidéo."
         else:
-            audio_section = f"\nAnalyse Audio:\n{audio_summary}"
-            audio_report_section = "### Analyse Audio\nRésultats de l'analyse audio extraite de la vidéo."
+            audio_section = f"\n**Analyse Audio**:\n{audio_summary}"
+            audio_report_section = "### 🎧 Analyse Audio\nRésultats de l'analyse audio extraite de la vidéo."
     
-    # Get the appropriate prompt
-    prompt_template = get_summarization_prompt(language)
+    # Get the appropriate prompt for conclusion
+    prompt_template = get_conclusion_prompt(language)
     prompt = prompt_template.format(
         descriptions=desc_text,
         audio_section=audio_section,
         audio_report_section=audio_report_section
     )
     
+    conclusion_report = ""
+    
     try:
-        # Generate report using LLM
-        report_content = vision_client.generate_text(prompt)
+        # Generate conclusion using LLM
+        logger.info("Generating global conclusion with Llava...")
+        conclusion_content = vision_client.generate_text(prompt)
         
-        full_report = report_content
+        conclusion_report = "\n\n" + "="*80 + "\n\n"
+        conclusion_report += "# 📊 CONCLUSION GÉNÉRALE\n\n"
+        conclusion_report += conclusion_content
         
-        # Inject detailed audio section if available before the conclusion
-        if audio_section:
-            conclusion_headers = ["## Conclusions et Recommandations", "## الاستنتاجات والتوصيات", "## Conclusion"]
-            injected = False
-            for header in conclusion_headers:
-                if header in full_report:
-                    full_report = full_report.replace(header, f"---\n\n{audio_section}\n\n{header}")
-                    injected = True
-                    break
-            
-            if not injected:
-                full_report += "\n\n---\n\n" + audio_section
+        # Inject detailed audio section if available
+        if audio_section and audio_report_section not in conclusion_content:
+            conclusion_report += f"\n\n{audio_report_section}\n{audio_section}"
         
     except Exception as e:
-        logger.error(f"Failed to generate report with LLM: {e}")
+        logger.error(f"Failed to generate conclusion with LLM: {e}")
         
-        # Fallback: create basic report without LLM
-        if language == "arabe":
-            full_report = f"""## أوصاف الإطارات
-{desc_text}
-{audio_section}
-"""
-        else:
-            full_report = f"""## Descriptions des Frames
-{desc_text}
-{audio_section}
-"""
+        # Fallback: create basic conclusion
+        conclusion_report = "\n\n" + "="*80 + "\n\n"
+        conclusion_report += "# 📊 CONCLUSION GÉNÉRALE\n\n"
+        conclusion_report += "## ⚠️ Synthèse\n\n"
+        conclusion_report += f"Analyse de {len([d for d in descriptions if d.get('status') == 'success'])} frames effectuée.\n\n"
+        if audio_section:
+            conclusion_report += f"{audio_report_section}\n{audio_section}\n\n"
+    
+    # Combine both parts
+    full_report = frame_by_frame_report + conclusion_report
     
     # Save markdown report
     output_file = Path(output_path)
