@@ -1,162 +1,179 @@
+# 🚑 Monkedh: Emergency First Aid Assistant
 
-# Emergency First Aid App (Monkedh)
+> **Your AI-powered companion for emergency response in Tunisia.**
+> *Prototype / Research Project*
 
-Emergency-first-aid assistant for the Tunisian context: a Next.js web UI + a Python/FastAPI backend powered by CrewAI.
+![Status](https://img.shields.io/badge/Status-Prototype-orange?style=flat-square) 
+![Stack](https://img.shields.io/badge/Stack-Next.js%20|%20FastAPI%20|%20CrewAI-blue?style=flat-square) 
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
-This repository is a prototype / research project. In a real emergency, call your local emergency number (Tunisia: SAMU **190**, Protection Civile **198**, Police **197**).
+## 📌 Overview
 
-## What’s in this repo
+**Monkedh** is a comprehensive emergency assistant designed to provide immediate guidance and support during medical emergencies. It combines real-time AI analysis, voice interaction, and computer vision to assist users effectively, tailored for the Tunisian context.
 
-- **Frontend**: Next.js app in `frontend/`
-  - Pages: chat, voice call, CPR camera, video report, realtime analysis.
-- **Main assistant backend**: FastAPI + CrewAI in `backend/assistant/`
-  - REST API for chat + history
-  - Optional voice support (WebRTC token endpoint + WebSocket voice endpoint)
-  - Video report generation endpoints (upload a video, generate report, list reports)
-  - Serves emergency guide images from `/images`.
-- **CPR camera backend**: Flask + Socket.IO in `backend/cpr_assistant/`
-  - Receives frames from the browser, runs YOLO-based CPR keypoints/metrics, streams feedback back.
-- **Realtime video analysis backend** (separate): Docker Compose in `backend/realtime_vlm/`
-  - Powers the `/realtime-analysis` UI.
+### 🌟 Key Features
 
-## Features that exist (based on current code)
+| Feature | Description |
+| :--- | :--- |
+| **💬 AI Chat Assistant** | Intelligent chat powered by **CrewAI** offering immediate first-aid advice. |
+| **🎙️ Voice Interaction** | Hands-free voice mode with real-time speech-to-text and text-to-speech (Azure Realtime). |
+| **📹 Realtime Video Analysis** | Analyzes live video feeds to detect hazards or assess situations. |
+| **🫀 CPR Assistant** | Live feedback on CPR performance using computer vision (**YOLO**). |
+| **📄 Automated Reports** | Generates detailed incident reports from video footage for medical professionals. |
+| **📚 RAG Knowledge Base** | Access to verified first-aid protocols and manuals using **Qdrant**. |
+| **🇹🇳 Local Context** | Integrated with Tunisian emergency numbers (SAMU 190, Civil Protection 198). |
 
-- **Text chat** (web + API): `POST /api/chat` routes messages through a single CrewAI agent and stores recent history in Redis.
-- **RAG for first-aid protocols**: a Qdrant collection (`first_aid_manual`) queried via an Ollama embedding model.
-- **Visual guides**: the agent can return a “📷 GUIDE VISUEL …” path; the backend serves the images and the frontend renders them.
-- **Voice call (web)**: browser ↔ Azure Realtime over WebRTC; the backend is used to mint an ephemeral token and to answer function calls by calling the assistant chat endpoint.
-- **Voice mode (CLI)**: optional GPT-Realtime STT/TTS via WebSocket (requires `pyaudio` + `websockets`).
-- **Video report (web)**: upload a video, backend processes frames/audio and generates a report you can view/download; optional email sending via SMTP env vars.
-- **CPR camera guide (web)**: live CPR feedback via Socket.IO to the CPR backend.
+---
 
-## Quickstart (local)
+## 🏗️ Architecture
 
-This is the minimal setup to run the web UI + the assistant API.
+```mermaid
+graph TD
+    subgraph Frontend [📱 Frontend (Next.js)]
+        UI[Web UI]
+        Voice[Voice Module]
+        Cam[Camera Feed]
+    end
 
-### 1) Start the assistant API (FastAPI)
+    subgraph Backend_Assistant [🧠 Assistant Backend (FastAPI)]
+        API[REST API]
+        Crew[CrewAI Agent]
+        RAG[RAG Engine]
+        Redis[(Redis History)]
+        Qdrant[(Qdrant Vector DB)]
+    end
 
+    subgraph Backend_CPR [🫀 CPR Backend (Flask)]
+        CPR_API[Socket.IO Server]
+        YOLO[YOLO Model]
+    end
+
+    subgraph Backend_VLM [👁️ Realtime VLM (Docker)]
+        VLM_Orch[Orchestrator]
+        Vision[Vision Model]
+    end
+
+    UI --> API
+    Voice --> API
+    Cam -- Stream --> CPR_API
+    UI --> VLM_Orch
+    API --> Crew
+    Crew --> RAG
+    RAG --> Qdrant
+    API --> Redis
+    CPR_API --> YOLO
+```
+
+---
+
+## 🚀 Quick Start
+
+Follow these steps to get the system running locally.
+
+### Prerequisites
+- **Node.js** & **npm**
+- **Python 3.10+**
+- **Docker** (optional, for VLM backend)
+- **Redis** server running locally
+
+### 1️⃣ Assistant Backend Setup (FastAPI)
 ```powershell
 cd backend/assistant
 
+# Create and activate virtual environment
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# Install and register the package (recommended)
+# Install dependencies and package
 pip install -e .
 
-# Start API on http://localhost:8000
+# Run the server
 python -m monkedh.api
 ```
+* The API will listen on `http://localhost:8000`
+* Interactive API docs available at `http://localhost:8000/docs`
 
-### 2) Start the frontend (Next.js)
-
+### 2️⃣ Frontend Setup (Next.js)
 ```powershell
 cd frontend
+
+# Install dependencies
 npm install
+
+# Run development server
 npm run dev
 ```
+* Open `http://localhost:3000` in your browser.
 
-Open `http://localhost:3000`.
+### 3️⃣ (Optional) CPR Camera Backend
+Required for the CPR feedback feature.
+```powershell
+cd backend/cpr_assistant
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python api_server.py
+```
+* Listens on `http://localhost:5000`
 
-## Configuration
+---
 
-### Backend env file
+## ⚙️ Configuration
 
-The assistant API loads environment variables from `backend/assistant/.env`.
+You need to configure environment variables for the system to work correctly.
 
-Create `backend/assistant/.env`:
+<details>
+<summary><strong>📋 Backend Environment (`backend/assistant/.env`)</strong></summary>
+
+Create a file named `.env` in `backend/assistant/`:
 
 ```env
 # Azure OpenAI (CrewAI LLM)
-AZURE_API_KEY=...
+AZURE_API_KEY=your_key
 AZURE_API_BASE=https://<your-resource>.openai.azure.com/
-AZURE_API_VERSION=...
+AZURE_API_VERSION=2024-02-15-preview
 model=azure/<your-deployment-name>
 
-# Redis (conversation history)
+# Redis (History)
 REDIS_HOST=localhost
 REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
 
-# Optional web search
-SERPER_API_KEY=...
-
-# Azure Realtime (web voice + CLI voice)
-AZURE_REALTIME_API_KEY=...
-AZURE_REALTIME_API_BASE=...
-
-# Optional: email sending for video reports
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SENDER_EMAIL=...
-SENDER_PASSWORD=...
+# Azure Realtime (Voice)
+AZURE_REALTIME_API_KEY=your_key
+AZURE_REALTIME_API_BASE=your_base_url
 ```
+</details>
 
-### Frontend env file
+<details>
+<summary><strong>📋 Frontend Environment (`frontend/.env.local`)</strong></summary>
 
-The frontend reads env vars from `frontend/.env.local`:
+Create a file named `.env.local` in `frontend/`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
 NEXT_PUBLIC_REALTIME_VLM_URL=http://localhost:8000
 ```
+</details>
 
-Notes:
+---
 
-- `NEXT_PUBLIC_API_URL` points to the **assistant FastAPI** server.
-- `NEXT_PUBLIC_BACKEND_URL` points to the **CPR Flask/Socket.IO** server.
-- `NEXT_PUBLIC_REALTIME_VLM_URL` points to the **realtime_vlm** orchestrator.
-- The assistant API and `realtime_vlm` orchestrator both default to port **8000** → you must run them on different ports if you want both at the same time.
+## 🛠️ Tech Stack
 
-## Running optional components
+| Component | Technologies |
+| :--- | :--- |
+| **Frontend** | ![Next.js](https://img.shields.io/badge/-Next.js-black?logo=next.js) ![React](https://img.shields.io/badge/-React-61DAFB?logo=react&logoColor=black) ![Tailwind](https://img.shields.io/badge/-Tailwind-38B2AC?logo=tailwind-css&logoColor=white) ![Shadcn/UI](https://img.shields.io/badge/-Shadcn/UI-000000?logo=shadcnui&logoColor=white) |
+| **Backend** | ![FastAPI](https://img.shields.io/badge/-FastAPI-009688?logo=fastapi&logoColor=white) ![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white) ![Flask](https://img.shields.io/badge/-Flask-000000?logo=flask&logoColor=white) |
+| **AI & ML** | ![CrewAI](https://img.shields.io/badge/-CrewAI-FB542B) ![YOLO](https://img.shields.io/badge/-YOLO-00FFFF) ![OpenCV](https://img.shields.io/badge/-OpenCV-5C3EE8?logo=opencv&logoColor=white) ![LangChain](https://img.shields.io/badge/-LangChain-1C3C3C?logo=langchain&logoColor=white) |
+| **Data & Infra** | ![Redis](https://img.shields.io/badge/-Redis-DC382D?logo=redis&logoColor=white) ![Qdrant](https://img.shields.io/badge/-Qdrant-D22D70?logo=qdrant&logoColor=white) ![Docker](https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white) |
 
-### CPR camera backend
+---
 
-```powershell
-cd backend/cpr_assistant
+## ⚠️ Emergency Disclaimer
 
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+**This application is for educational and research purposes only.** It is a prototype and should not be relied upon in a critical life-or-death situation.
 
-pip install -r requirements.txt
-python api_server.py
-```
-
-Default URL: `http://localhost:5000`.
-
-### Realtime video analysis backend (Docker)
-
-```powershell
-cd backend/realtime_vlm
-docker compose up --build
-```
-
-Default URL: `http://localhost:8000` (see `docker-compose.yml`).
-
-## RAG / Qdrant / Ollama notes
-
-- The RAG pipeline expects an Ollama server at `http://localhost:11434`.
-- A one-time vectorization script exists at `backend/assistant/src/monkedh/tools/rag/vectorize_document.py`.
-- Current Qdrant connection details are referenced in code. For production, move Qdrant/Redis credentials to environment variables and rotate any leaked keys.
-
-## API overview (assistant backend)
-
-- `GET /api/health`
-- `POST /api/chat`
-- `GET /api/history/{channel_id}` / `DELETE /api/history/{channel_id}`
-- `POST /api/realtime/token` (ephemeral token for WebRTC voice)
-- `WS /api/voice/{session_id}` (WebSocket voice mode)
-- `POST /api/video/analyze` + `GET /api/video/reports` + `GET /api/video/reports/{id}`
-
-## Tech stack (as used in this repo)
-
-- **Frontend**: Next.js (App Router), React, TypeScript, Tailwind, shadcn/ui.
-- **Assistant backend**: FastAPI + CrewAI, Redis for short-term memory, Qdrant + Ollama embeddings for RAG.
-- **CPR backend**: Flask + Socket.IO, OpenCV, Ultralytics YOLO.
-- **Realtime analysis backend**: Dockerized microservices (see `backend/realtime_vlm`).
-
-## License
-
-No license file is included in this repository yet.
+**In case of real emergency in Tunisia:**
+*   🚑 **SAMU: 190**
+*   🚒 **Protection Civile: 198**
+*   🚓 **Police: 197**
