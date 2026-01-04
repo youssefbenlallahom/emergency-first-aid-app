@@ -29,13 +29,13 @@
 
 ```mermaid
 graph TD
-    subgraph Frontend [📱 Frontend (Next.js)]
+    subgraph Frontend ["📱 Frontend (Next.js)"]
         UI[Web UI]
         Voice[Voice Module]
         Cam[Camera Feed]
     end
 
-    subgraph Backend_Assistant [🧠 Assistant Backend (FastAPI)]
+    subgraph Backend_Assistant ["🧠 Assistant Backend (FastAPI)"]
         API[REST API]
         Crew[CrewAI Agent]
         RAG[RAG Engine]
@@ -43,12 +43,12 @@ graph TD
         Qdrant[(Qdrant Vector DB)]
     end
 
-    subgraph Backend_CPR [🫀 CPR Backend (Flask)]
+    subgraph Backend_CPR ["🫀 CPR Backend (Flask)"]
         CPR_API[Socket.IO Server]
         YOLO[YOLO Model]
     end
 
-    subgraph Backend_VLM [👁️ Realtime VLM (Docker)]
+    subgraph Backend_VLM ["👁️ Realtime VLM (Docker)"]
         VLM_Orch[Orchestrator]
         Vision[Vision Model]
     end
